@@ -63,7 +63,6 @@ Git LFS storage and bandwidth count against the GitHub quota, and every Vercel b
 ## Open points
 
 - Style values: currently Colour, Black and white, Film.
-- Instagram link: set `instagramUrl` in `src/site.config.mjs`.
 - Domain name.
 - Original downloads: only the large optimized version is shown for now.
 - Visitor statistics: none for now.
