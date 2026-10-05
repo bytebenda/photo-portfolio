@@ -1,0 +1,28 @@
+---
+// One static page per photo. It shows the photo view open over the grid,
+// and has its own title and link preview image.
+import Base from '../../layouts/Base.astro';
+import Gallery from '../../components/Gallery.astro';
+import { loadContent } from '../../lib/content.mjs';
+import site from '../../site.config.mjs';
+
+export async function getStaticPaths() {
+  const { photos } = await loadContent();
+  return photos.map((p) => ({ params: { slug: p.slug }, props: { slug: p.slug } }));
+}
+
+const { slug } = Astro.props;
+const { photos } = await loadContent();
+const p = photos.find((x) => x.slug === slug)!;
+const landscape = p.width >= p.height;
+const og = {
+  url: p.images.og.url,
+  width: landscape ? p.images.og.w : Math.round(p.images.og.w * p.ar),
+  height: landscape ? Math.round(p.images.og.w / p.ar) : p.images.og.w,
+  alt: p.title,
+};
+---
+
+<Base title={`${p.title} | ${site.name}`} description={`${p.title}, photographed by ${site.name}`} image={og} htmlClass="viewer-open">
+  <Gallery openSlug={slug} />
+</Base>

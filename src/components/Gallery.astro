@@ -1,0 +1,145 @@
+---
+// The whole page: hiding header with filter pills, the square grid, the footer
+// and the photo viewer. On /photo/<slug> the viewer is rendered open.
+import { loadContent } from '../lib/content.mjs';
+import site from '../site.config.mjs';
+
+interface Props {
+  openSlug?: string;
+}
+const { openSlug } = Astro.props;
+const { photos, categories, styles, years } = await loadContent();
+
+const srcset = (list: { w: number; url: string }[]) => list.map((s) => `${s.url} ${s.w}w`).join(', ');
+const TILE_SIZES = '(max-width: 640px) 33vw, (max-width: 1024px) 25vw, (max-width: 1799px) 20vw, 17vw';
+
+const groups = [
+  { key: 'cat', label: 'Categories', options: categories.map((c) => ({ id: c.id, label: c.label })) },
+  { key: 'year', label: 'Year', options: years.map((y) => ({ id: String(y.id), label: y.label })) },
+  { key: 'style', label: 'Style', options: styles.map((s) => ({ id: s.id, label: s.label })) },
+];
+
+const clientPhotos = photos.map((p) => ({
+  slug: p.slug,
+  title: p.title,
+  cat: p.categories,
+  year: p.year === null ? [] : [String(p.year)],
+  style: p.style ? [p.style] : [],
+  ar: Number(p.ar.toFixed(4)),
+  focus: p.focus,
+  preview: p.images.preview.url,
+  avif: srcset(p.images.large.avif),
+  webp: srcset(p.images.large.webp),
+  fallback: p.images.large.webp[0].url,
+}));
+
+const openIndex = openSlug ? photos.findIndex((p) => p.slug === openSlug) : -1;
+const open = openIndex >= 0 ? photos[openIndex] : null;
+const prev = open ? photos[(openIndex - 1 + photos.length) % photos.length] : null;
+const next = open ? photos[(openIndex + 1) % photos.length] : null;
+
+const data = {
+  siteTitle: site.name,
+  groups: groups.map((g) => ({ key: g.key, options: g.options.map((o) => o.id) })),
+  photos: clientPhotos,
+  open: open ? open.slug : null,
+};
+const year = new Date().getFullYear();
+---
+
+<header class="header" id="header">
+  <a class="logo" href="/">{site.name}</a>
+  <nav class="filters" aria-label="Filters">
+    {
+      groups.map((g) => (
+        <div class="filter" data-group={g.key}>
+          <button type="button" class="pill" aria-expanded="false" aria-controls={`panel-${g.key}`} id={`pill-${g.key}`}>
+            <span>{g.label}</span>
+            <span class="pill-count" hidden />
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.5l3 3 3-3" /></svg>
+          </button>
+          <div class="panel" id={`panel-${g.key}`} role="group" aria-labelledby={`pill-${g.key}`} hidden>
+            <div class="panel-actions">
+              <button type="button" class="text-btn" data-action="all">Select all</button>
+              <button type="button" class="text-btn" data-action="clear">Clear</button>
+            </div>
+            {g.options.map((o) => (
+              <label class="option">
+                <input type="checkbox" value={o.id} checked />
+                <span class="option-label">{o.label}</span>
+                <span class="option-count" />
+              </label>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </nav>
+</header>
+
+<main>
+  <h1 class="visually-hidden">Photography by {site.name}</h1>
+  <div class="grid" id="grid">
+    {
+      photos.map((p, i) => (
+        <a class="tile" href={`/photo/${p.slug}`} data-i={i}>
+          <picture>
+            <source type="image/avif" srcset={srcset(p.images.thumb.avif)} sizes={TILE_SIZES} />
+            <img
+              src={p.images.thumb.webp[0].url}
+              srcset={srcset(p.images.thumb.webp)}
+              sizes={TILE_SIZES}
+              alt={p.title}
+              width="800"
+              height="800"
+              loading={i < 15 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          </picture>
+        </a>
+      ))
+    }
+  </div>
+  <div class="empty" id="empty" hidden>
+    <p>No photos match these filters.</p>
+    <button type="button" class="pill" id="reset">Show all photos</button>
+  </div>
+</main>
+
+<footer class="footer">
+  <span>&copy; {year} {site.name}</span>
+  <a href={site.instagramUrl} rel="me noopener">Instagram</a>
+</footer>
+
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label={open ? open.title : 'Photo'} hidden={!open}>
+  <div class="viewer-bg"></div>
+  <div class="stage" id="stage" style={open ? `--ar: ${open.ar}` : undefined}>
+    <img class="stage-preview" id="stage-preview" alt="" src={open ? open.images.preview.url : undefined} />
+    <picture>
+      <source type="image/avif" id="stage-avif" srcset={open ? srcset(open.images.large.avif) : undefined} sizes="100vw" />
+      <img
+        class="stage-full"
+        id="stage-full"
+        alt={open ? open.title : ''}
+        src={open ? open.images.large.webp[0].url : undefined}
+        srcset={open ? srcset(open.images.large.webp) : undefined}
+        sizes="100vw"
+      />
+    </picture>
+  </div>
+  <a class="glass-btn viewer-close" id="viewer-close" href="/" aria-label="Close">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg>
+  </a>
+  <a class="glass-btn viewer-prev" id="viewer-prev" href={prev ? `/photo/${prev.slug}` : '/'} aria-label="Previous photo">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4l-6 6 6 6" /></svg>
+  </a>
+  <a class="glass-btn viewer-next" id="viewer-next" href={next ? `/photo/${next.slug}` : '/'} aria-label="Next photo">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 4l6 6-6 6" /></svg>
+  </a>
+</div>
+
+<script type="application/json" id="gallery-data" set:html={JSON.stringify(data).replace(/</g, '\\u003c')} />
+
+<script>
+  import '../scripts/gallery.ts';
+</script>
