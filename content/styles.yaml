@@ -1,0 +1,7 @@
+# Allowed styles (the processing look). Order here is the order in the Style filter.
+- id: colour
+  label: Colour
+- id: black-and-white
+  label: Black and white
+- id: film
+  label: Film

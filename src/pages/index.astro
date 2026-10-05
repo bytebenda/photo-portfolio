@@ -1,0 +1,16 @@
+---
+import Base from '../layouts/Base.astro';
+import Gallery from '../components/Gallery.astro';
+import { loadContent } from '../lib/content.mjs';
+import site from '../site.config.mjs';
+
+const { photos } = await loadContent();
+const cover = photos[0];
+---
+
+<Base
+  title={site.name}
+  image={cover ? { url: cover.images.og.url, width: cover.width >= cover.height ? cover.images.og.w : Math.round(cover.images.og.w * cover.ar), height: cover.width >= cover.height ? Math.round(cover.images.og.w / cover.ar) : cover.images.og.w, alt: cover.title } : undefined}
+>
+  <Gallery />
+</Base>

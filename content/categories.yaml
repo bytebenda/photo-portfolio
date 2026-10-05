@@ -1,0 +1,12 @@
+# Allowed categories. Order here is the order in the Categories filter.
+# A category shows up in the filter as soon as one photo uses it.
+- id: street
+  label: Street
+- id: travel
+  label: Travel
+- id: landscape
+  label: Landscape
+- id: portrait
+  label: Portrait
+- id: architecture
+  label: Architecture
