@@ -214,6 +214,14 @@ export async function loadContent({ fresh = false } = {}) {
     draft.push({ file: f, slug, title: slugify(f).replace(/-/g, ' '), categories: [UNCATEGORIZED.id], style: null, year: null, focus: [0.5, 0.5], unlisted: true });
   }
 
+  // Git LFS pointer files instead of images mean LFS was not fetched (on Vercel: not enabled).
+  for (const d of draft) {
+    const head = (await readFile(path.join(PHOTOS_DIR, d.file))).subarray(0, 40).toString('latin1');
+    if (head.startsWith('version https://git-lfs')) {
+      errors.push(`${d.file} is a Git LFS pointer, not an image: run "git lfs pull", or turn on Git LFS in the Vercel project settings`);
+    }
+  }
+
   if (errors.length) throw new ContentError(errors);
 
   const photos = [];
