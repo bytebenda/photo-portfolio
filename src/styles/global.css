@@ -633,6 +633,12 @@ html:not(.js) .glass-btn {
 .hero .hero-space {
   display: block;
 }
+/* On phones one swipe covers a lot of ground: give the animation more room. */
+@media (max-width: 640px), (pointer: coarse) {
+  .hero-space {
+    height: 150svh;
+  }
+}
 .hero-canvas,
 .hero-glow {
   position: fixed;
@@ -643,6 +649,7 @@ html:not(.js) .glass-btn {
 }
 .hero-canvas {
   z-index: 10;
+  opacity: calc(1 - var(--hero-x, 0));
   display: block;
   touch-action: pan-y;
   cursor: grab;
@@ -703,7 +710,7 @@ html:not(.hero-on) .hero-hint {
   transition: opacity 300ms var(--ease), visibility 0s 300ms;
 }
 .hero-on .grid {
-  opacity: 0;
+  opacity: var(--hero-x, 0);
 }
 
 @media (prefers-reduced-motion: reduce) {

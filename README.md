@@ -83,11 +83,12 @@ The Location section of the filter comes from the subfolders of the Drive folder
 
 ## Globe hero
 
-The home page opens on a full-screen globe made of the gallery's square thumbnails, turning once every 90 seconds. Dragging or swiping sideways spins it, and on desktop it leans a little towards the cursor. Scrolling one screen down unrolls the globe into a flat sheet, like a map peeled off a globe, and the sheet then settles into the grid: one copy of each photo flies to its square and the other copies fade out. The animation follows the scroll position, so scrolling back up builds the globe again. The Filter button appears once the grid is reached.
+The home page opens on a full-screen globe made of the gallery's square thumbnails, turning once every 90 seconds. Dragging or swiping sideways spins it, and on desktop it leans a little towards the cursor. Scrolling down (one screen on desktop, one and a half on phones) unrolls the globe into a flat sheet, like a map peeled off a globe. While it is still flattening, one copy of each photo starts its flight to its grid square, in an arc towards the viewer with a slight turn, centre of the screen first; the other copies drift back out of focus and fade. Everything runs on one timeline with overlapping windows, so the motion never stops halfway. The animation follows the scroll through a spring with a speed limit: a fast swipe still plays it in full (at least 0.6 seconds), and the last few percent crossfade into the real grid. Scrolling back up builds the globe again. The Filter button appears once the grid is reached.
 
 - The globe has about 220 tiles on desktop and 120 on phones, so photos repeat; each run of tiles holds every photo once, in a shuffled order.
 - It shows only on the home page without filters in the address. Links to a photo (`/photo/...`) or a filtered view open on the grid as before.
-- It is drawn with WebGL (Three.js, about 130 KB gzipped). That code loads after the page, so the grid is not slowed down. Without WebGL or JavaScript the page is the plain grid.
+- Tiles in flight stretch slightly with speed, and the far side of the globe and the fading copies are blurred for depth. On desktop the flying tiles also get a thin light edge and a soft glow (bloom), which switches itself off on a device that cannot keep up.
+- It is drawn with WebGL (Three.js, about 130 KB gzipped, plus about 20 KB for the glow on desktop). That code loads after the page, so the grid is not slowed down. Without WebGL or JavaScript the page is the plain grid.
 - When the visitor's system asks for reduced motion (such as Reduce Motion on an iPhone), the globe does not spin, tilt or fade in by itself, but scrolling still unrolls it into the grid, since that motion follows the visitor's own scrolling.
 
 ## Rules the build checks

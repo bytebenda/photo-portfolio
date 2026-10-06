@@ -93,7 +93,7 @@ window.addEventListener(
     lastT = t;
 
     // Over the globe hero the header stays put and the gap stays at rest.
-    if (hero && root.classList.contains('hero') && y < hero.offsetHeight) {
+    if (hero && root.classList.contains('hero') && y <= hero.offsetHeight) {
       travel = 0;
       setHeaderHidden(false);
       return;
