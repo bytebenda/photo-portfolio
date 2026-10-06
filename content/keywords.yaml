@@ -1,0 +1,13 @@
+# Every keyword stored in a photo becomes a filter: a keyword under a "Type"
+# parent in Lightroom (Type > Film), or written as "type: film", sets the photo's
+# type (the Style filter); any other keyword becomes a category. Parent keywords
+# such as "Category" are left out on their own.
+#
+# ignore: keywords that never become a filter, for example ones your camera app
+# adds. Case and accents do not matter.
+ignore: []
+
+# featured: a photo with one of these keywords, or in a Google Drive folder with
+# one of these names, comes first in the grid (after the photos in photos.yaml).
+# Add "favorieten" to put everything in the Favorieten folder on top.
+featured: [featured, uitgelicht]

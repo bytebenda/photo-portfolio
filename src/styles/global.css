@@ -401,6 +401,60 @@ html:not(.js) .glass-btn {
   right: 20px;
 }
 
+/* Photo details: the (i) button and its panel */
+.viewer-info {
+  right: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+}
+.viewer-info[hidden] {
+  display: none;
+}
+.viewer-info[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.28);
+}
+.info-panel {
+  position: absolute;
+  right: 20px;
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + 56px);
+  max-width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(20, 20, 20, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.35);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: info-in 160ms ease-out;
+}
+.info-panel[hidden],
+.info-row[hidden] {
+  display: none;
+}
+.info-panel dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.info-panel dt {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.info-panel dd {
+  margin: 0;
+}
+@keyframes info-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 /* Breakpoints: 3 columns on phone, 4 on tablet, 5 on desktop, 6 on very wide screens */
 
 @media (max-width: 640px) {
@@ -444,6 +498,19 @@ html:not(.js) .glass-btn {
   .viewer-next {
     right: 12px;
   }
+  .viewer-info {
+    right: auto;
+    left: 50%;
+    margin-left: -22px;
+    bottom: max(32px, env(safe-area-inset-bottom));
+  }
+  .info-panel {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(max(32px, env(safe-area-inset-bottom)) + 56px);
+    animation: none;
+  }
 }
 @media (min-width: 641px) and (max-width: 1024px) {
   .grid {
@@ -460,12 +527,14 @@ html:not(.js) .glass-btn {
   .header,
   .tile img,
   .glass-btn,
+  .info-panel,
   .stage-full,
   .option,
   .pill {
     transition: none;
   }
-  .panel {
+  .panel,
+  .info-panel {
     animation: none;
   }
 }

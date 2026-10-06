@@ -1,0 +1,69 @@
+# Imports the photos from Google Drive and commits them, so Vercel builds the
+# site with the new photos. Run it from the Actions tab ("Run workflow"); it also
+# runs every morning and when the import script or this file changes. It also
+# makes the web images (public/img) for new photos and commits them, so Vercel
+# builds without downloading the originals.
+#
+# Optional repository secrets (Settings, Secrets and variables, Actions):
+#   GOOGLE_API_KEY          an API key, for a folder shared as "anyone with the link"
+#   GOOGLE_SERVICE_ACCOUNT  the service account key JSON, for a private folder
+# Without either, the folder must be shared as "anyone with the link".
+name: Import photos from Google Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: Download every photo again and keep the changed ones (after adding keywords to photos already in Drive)
+        type: boolean
+        default: false
+  push:
+    paths:
+      - scripts/drive-import.mjs
+      - .github/workflows/drive-import.yml
+  schedule:
+    - cron: '17 6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: drive-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      # Keep the originals as Git LFS pointers: only new photos are downloaded
+      # (from Drive), which saves Git LFS bandwidth on every run.
+      GIT_LFS_SKIP_SMUDGE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      # New photos must still be committed to Git LFS, so its hooks and filters are needed.
+      - run: git lfs install --local
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Import
+        run: |
+          npm ci
+          npm run import -- ${{ inputs.refresh && '--refresh' || '' }}
+          npm run images
+      - name: Commit
+        run: |
+          git add content/ public/img/
+          if git diff --cached --quiet; then
+            echo "No changes in Google Drive"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Import photos from Google Drive"
+          git pull --rebase
+          git push

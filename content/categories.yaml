@@ -1,12 +1,29 @@
 # Allowed categories. Order here is the order in the Categories filter.
 # A category shows up in the filter as soon as one photo uses it.
+#
+# Categories come from the keywords stored in the photos (set in Lightroom,
+# Capture One or the Fujifilm app): every keyword becomes a category in the
+# filter, with the keyword as its label. This list is optional. It sets the
+# order, the label, and extra words that count as the same category, so the
+# keywords "Straat" and "Street" both end up under Street. Keywords not listed
+# here come after these, in alphabetical order. Google Drive folder names and
+# #hashtags also count, as whole words: the folder "Straat Gent" gives street.
+# photos.yaml overrides everything for a photo.
+#
+# match: extra words for this category; the id and label always match, without
+# regard to case or accents.
 - id: street
   label: Street
+  match: [straat, straatfotografie, streetphotography]
 - id: travel
   label: Travel
+  match: [reis, reizen, vakantie, trip, citytrip]
 - id: landscape
   label: Landscape
+  match: [landschap, landschappen, natuur, nature, bos, zee, bergen]
 - id: portrait
   label: Portrait
+  match: [portret, portretten, portraits, mensen, people]
 - id: architecture
   label: Architecture
+  match: [architectuur, gebouwen, buildings]

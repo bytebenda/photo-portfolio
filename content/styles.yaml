@@ -1,7 +1,20 @@
 # Allowed styles (the processing look). Order here is the order in the Style filter.
+#
+# The type of a photo comes from a keyword under a "Type" parent in Lightroom
+# (Type > Film) or written as "type: film". A type not listed here becomes a
+# new option in the filter. A plain keyword or folder name matching a word below
+# also sets the type. A photo has one type: a Type keyword first, otherwise the
+# first match in this list, where the default only wins when nothing else
+# matches. No match at all gives the default.
 - id: colour
   label: Colour
+  match: [color, kleur]
+  default: true
 - id: black-and-white
   label: Black and white
+  match: [zwart-wit, zwartwit, zw, bw, b&w, monochrome, black & white]
+  # A photo without colour that names no type gets this one.
+  monochrome: true
 - id: film
   label: Film
+  match: [analoog, analog, analogue, 35mm, kodak, portra, ilford]

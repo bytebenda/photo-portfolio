@@ -2,6 +2,5 @@ node_modules/
 dist/
 .astro/
 .vercel/
-public/img/
 .DS_Store
 *.log

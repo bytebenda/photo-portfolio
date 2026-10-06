@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "scripts": {
     "check": "node scripts/lfs-fetch.mjs && node scripts/check.mjs",
+    "import": "node scripts/drive-import.mjs",
     "images": "node scripts/images.mjs",
     "dev": "node scripts/lfs-fetch.mjs && node scripts/images.mjs && astro dev",
     "build": "node scripts/lfs-fetch.mjs && node scripts/images.mjs && astro build",
