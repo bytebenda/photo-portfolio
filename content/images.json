@@ -51,81 +51,6 @@
     "20250303-dscf0440-22a75f05-og1200.jpg"
    ]
   },
-  "20250511-dscf1048.jpg": {
-   "sha256": "f2121de047963e6b98ec429aebcbdc4bfccac94da30ce6d32b396078fda695c6",
-   "hash": "a8251d3e",
-   "width": 3677,
-   "height": 5515,
-   "taken": "2025:05:11 12:16:11",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF27mmF2.8",
-   "monochrome": false,
-   "outputs": [
-    "20250511-dscf1048-a8251d3e-t400.avif",
-    "20250511-dscf1048-a8251d3e-t800.avif",
-    "20250511-dscf1048-a8251d3e-l1600.avif",
-    "20250511-dscf1048-a8251d3e-l3000.avif",
-    "20250511-dscf1048-a8251d3e-t400.webp",
-    "20250511-dscf1048-a8251d3e-t800.webp",
-    "20250511-dscf1048-a8251d3e-l1600.webp",
-    "20250511-dscf1048-a8251d3e-l3000.webp",
-    "20250511-dscf1048-a8251d3e-p640.webp",
-    "20250511-dscf1048-a8251d3e-og1200.jpg"
-   ]
-  },
-  "20250511-dscf1050.jpg": {
-   "sha256": "e827d86d3ffcade4e00106f59eecfe3f6a7baaa9085d00c4d63eeb0e2613b68c",
-   "hash": "bc184d63",
-   "width": 4000,
-   "height": 6000,
-   "taken": "2025:05:11 12:16:49",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF27mmF2.8",
-   "monochrome": false,
-   "outputs": [
-    "20250511-dscf1050-bc184d63-t400.avif",
-    "20250511-dscf1050-bc184d63-t800.avif",
-    "20250511-dscf1050-bc184d63-l1600.avif",
-    "20250511-dscf1050-bc184d63-l3000.avif",
-    "20250511-dscf1050-bc184d63-t400.webp",
-    "20250511-dscf1050-bc184d63-t800.webp",
-    "20250511-dscf1050-bc184d63-l1600.webp",
-    "20250511-dscf1050-bc184d63-l3000.webp",
-    "20250511-dscf1050-bc184d63-p640.webp",
-    "20250511-dscf1050-bc184d63-og1200.jpg"
-   ]
-  },
-  "20250511-dscf1051.jpg": {
-   "sha256": "f6220989c5f1c2f0edd9b4d3c3a04b69bff97400fc092355044e560aa2798301",
-   "hash": "67ebc8c9",
-   "width": 6000,
-   "height": 4000,
-   "taken": "2025:05:11 12:22:22",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF27mmF2.8",
-   "monochrome": false,
-   "outputs": [
-    "20250511-dscf1051-67ebc8c9-t400.avif",
-    "20250511-dscf1051-67ebc8c9-t800.avif",
-    "20250511-dscf1051-67ebc8c9-l1600.avif",
-    "20250511-dscf1051-67ebc8c9-l3000.avif",
-    "20250511-dscf1051-67ebc8c9-t400.webp",
-    "20250511-dscf1051-67ebc8c9-t800.webp",
-    "20250511-dscf1051-67ebc8c9-l1600.webp",
-    "20250511-dscf1051-67ebc8c9-l3000.webp",
-    "20250511-dscf1051-67ebc8c9-p640.webp",
-    "20250511-dscf1051-67ebc8c9-og1200.jpg"
-   ]
-  },
   "dscf0369.jpg": {
    "sha256": "02d67ca90ed3152f1b191b8299ab25913cba08e9c45c06010f4b9e6b6ddd4270",
    "hash": "a40a2eea",
@@ -174,81 +99,6 @@
     "dscf0407-9f3732ff-l3000.webp",
     "dscf0407-9f3732ff-p640.webp",
     "dscf0407-9f3732ff-og1200.jpg"
-   ]
-  },
-  "dscf5268.jpg": {
-   "sha256": "b73ba7d8b58d6465a5da18df23a2d713c8cb1bbea65a5216a55707d80fb074f3",
-   "hash": "b79c3e02",
-   "width": 6000,
-   "height": 4000,
-   "taken": "2024:05:10 20:08:38",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF27mmF2.8",
-   "monochrome": false,
-   "outputs": [
-    "dscf5268-b79c3e02-t400.avif",
-    "dscf5268-b79c3e02-t800.avif",
-    "dscf5268-b79c3e02-l1600.avif",
-    "dscf5268-b79c3e02-l3000.avif",
-    "dscf5268-b79c3e02-t400.webp",
-    "dscf5268-b79c3e02-t800.webp",
-    "dscf5268-b79c3e02-l1600.webp",
-    "dscf5268-b79c3e02-l3000.webp",
-    "dscf5268-b79c3e02-p640.webp",
-    "dscf5268-b79c3e02-og1200.jpg"
-   ]
-  },
-  "dscf5315.jpg": {
-   "sha256": "7fd54e65b31c1b57ade53db552090d443b78916de13eb62ed7d1444689f565f0",
-   "hash": "70076723",
-   "width": 6000,
-   "height": 4000,
-   "taken": "2024:05:11 19:08:26",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF27mmF2.8",
-   "monochrome": false,
-   "outputs": [
-    "dscf5315-70076723-t400.avif",
-    "dscf5315-70076723-t800.avif",
-    "dscf5315-70076723-l1600.avif",
-    "dscf5315-70076723-l3000.avif",
-    "dscf5315-70076723-t400.webp",
-    "dscf5315-70076723-t800.webp",
-    "dscf5315-70076723-l1600.webp",
-    "dscf5315-70076723-l3000.webp",
-    "dscf5315-70076723-p640.webp",
-    "dscf5315-70076723-og1200.jpg"
-   ]
-  },
-  "dscf5318.jpg": {
-   "sha256": "de7598fc9a79e46735ed3452d26cf4a2727ecceee1999334e9ffc62c33f19d2a",
-   "hash": "170e413b",
-   "width": 4000,
-   "height": 6000,
-   "taken": "2024:05:11 19:09:20",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF27mmF2.8",
-   "monochrome": false,
-   "outputs": [
-    "dscf5318-170e413b-t400.avif",
-    "dscf5318-170e413b-t800.avif",
-    "dscf5318-170e413b-l1600.avif",
-    "dscf5318-170e413b-l3000.avif",
-    "dscf5318-170e413b-t400.webp",
-    "dscf5318-170e413b-t800.webp",
-    "dscf5318-170e413b-l1600.webp",
-    "dscf5318-170e413b-l3000.webp",
-    "dscf5318-170e413b-p640.webp",
-    "dscf5318-170e413b-og1200.jpg"
    ]
   },
   "dscf5441.jpg": {
@@ -528,31 +378,6 @@
     "dscf7570-157661d7-l2048.webp",
     "dscf7570-157661d7-p640.webp",
     "dscf7570-157661d7-og1200.jpg"
-   ]
-  },
-  "dscf7702.jpg": {
-   "sha256": "8337e51c4148ae923fc6ac9e35d94e926eed309ead50b73b0d51795027cac6a3",
-   "hash": "3b3c6776",
-   "width": 2048,
-   "height": 1365,
-   "taken": "2024:08:11 15:48:01",
-   "keywords": [],
-   "tree": [],
-   "title": null,
-   "camera": "FUJIFILM X-T20",
-   "lens": "FUJIFILM XF23mmF1.4 R",
-   "monochrome": false,
-   "outputs": [
-    "dscf7702-3b3c6776-t400.avif",
-    "dscf7702-3b3c6776-t800.avif",
-    "dscf7702-3b3c6776-l1600.avif",
-    "dscf7702-3b3c6776-l2048.avif",
-    "dscf7702-3b3c6776-t400.webp",
-    "dscf7702-3b3c6776-t800.webp",
-    "dscf7702-3b3c6776-l1600.webp",
-    "dscf7702-3b3c6776-l2048.webp",
-    "dscf7702-3b3c6776-p640.webp",
-    "dscf7702-3b3c6776-og1200.jpg"
    ]
   },
   "dscf7747-2-3.jpg": {
