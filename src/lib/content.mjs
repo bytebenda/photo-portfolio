@@ -134,13 +134,24 @@ function leftover(tag, categories, styles) {
   return rest.replace(new RegExp(YEAR_TAG.source, 'g'), '').replace(/^-+|-+$/g, '');
 }
 
+// Items whose words include one of the tags exactly. Keywords match exactly, so
+// "street art" becomes its own category instead of counting as street.
+function exactly(tags, list) {
+  return list.filter((item) => wordsOf(item).some((w) => tags.includes(w))).map((item) => item.id);
+}
+
 /**
  * Categories, style, title and year a photo gets from its keywords and, when it
  * comes from Drive, its folders and description. Fields photos.yaml sets win.
+ *   topics: keywords that name categories ("Street", "Travel")
+ *   types:  keywords that name the type, i.e. the style ("Type|Film" or "type: film")
  */
-export function fromTags({ keywords = [], drive = null }, categories, styles) {
-  const tags = [...new Set([...keywords.map(tagSlug).filter(Boolean), ...driveTags(drive)])];
-  const folderYear = driveTags(drive).map((t) => t.match(YEAR_TAG)).find(Boolean);
+export function fromTags({ topics = [], types = [], drive = null }, categories, styles) {
+  const topicTags = [...new Set(topics.map(tagSlug).filter(Boolean))];
+  const typeTags = [...new Set(types.map(tagSlug).filter(Boolean))];
+  const folderTags = driveTags(drive);
+  const tags = [...new Set([...topicTags, ...typeTags, ...folderTags])];
+  const folderYear = folderTags.map((t) => t.match(YEAR_TAG)).find(Boolean);
   const descriptionLine = String(drive?.description ?? '')
     .split('\n')
     .map((l) => l.replace(HASHTAG, '').trim())
@@ -149,19 +160,22 @@ export function fromTags({ keywords = [], drive = null }, categories, styles) {
   // "Reizen/Lissabon 2024/Straat" gives "Lissabon 2024".
   const longest = [...(drive?.paths ?? [])].sort((a, b) => b.length - a.length)[0] ?? [];
   const folderTitle = [...longest].reverse().find((f) => leftover(tagSlug(f), categories, styles)) ?? null;
-  // One style: a specific one beats the default, so "film" plus "colour" gives film.
-  const matchedStyles = tagged(tags, styles);
-  const defaultStyle = styles.find((s) => s.default)?.id ?? null;
+  const byKeyword = new Set(exactly(topicTags, categories));
+  const byFolder = new Set(tagged(folderTags, categories));
+  // One style: a type keyword first, then a specific style word beats the default,
+  // so the keywords "film" and "colour" give film.
+  const plainStyles = new Set([...exactly(topicTags, styles), ...tagged(folderTags, styles)]);
+  const defaultStyle = styles.find((st) => st.default)?.id ?? null;
   return {
     tags,
-    categories: tagged(tags, categories),
-    style: matchedStyles.find((id) => id !== defaultStyle) ?? defaultStyle,
+    categories: categories.filter((c) => byKeyword.has(c.id) || byFolder.has(c.id)).map((c) => c.id),
+    style: exactly(typeTags, styles)[0] ?? styles.map((st) => st.id).find((id) => plainStyles.has(id) && id !== defaultStyle) ?? defaultStyle,
     title: descriptionLine ?? folderTitle ?? null,
     year: folderYear ? Number(folderYear[1]) : null,
   };
 }
 
-/** Tags that match no category, style or year, with the number of photos that carry them. */
+/** Folder words that match no category, style or year, with the number of photos in such folders. */
 function unmatchedTags(tagLists, categories, styles) {
   const counts = new Map();
   for (const tags of tagLists) {
@@ -175,7 +189,15 @@ function unmatchedTags(tagLists, categories, styles) {
 const asList = (v) => (Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [v]);
 const asText = (v) => (typeof v === 'string' ? v : typeof v?.value === 'string' ? v.value : Array.isArray(v) ? asText(v[0]) : null);
 
-/** Capture date, keywords and title stored in the file. */
+const TYPE_PARENT = /^(type|style|stijl)$/i;
+const TYPE_PREFIX = /^(?:type|style|stijl)\s*[:=]\s*(.+)$/i;
+
+/**
+ * Capture date, keywords and title stored in the file. The keywords are split:
+ * a keyword under a "Type" parent in Lightroom ("Type|Film") or written as
+ * "type: film" names the type; parents themselves ("Category") are left out;
+ * every other keyword names a category.
+ */
 async function readMeta(file) {
   try {
     const m = await exifr.parse(file, {
@@ -189,9 +211,20 @@ async function readMeta(file) {
     const taken = typeof raw === 'string' && /^\d{4}/.test(raw) ? raw : null;
     const keywords = [...new Set([...asList(m?.subject), ...asList(m?.Keywords)].map((k) => String(k).trim()).filter(Boolean))];
     const title = (asText(m?.title) ?? asText(m?.ObjectName))?.trim() || null;
-    return { taken, year: taken ? Number(taken.slice(0, 4)) : null, keywords, title };
+    const tree = asList(m?.hierarchicalSubject).map((h) => String(h).split('|').map((x) => x.trim()).filter(Boolean)).filter((x) => x.length);
+    const parents = new Set(tree.flatMap((x) => x.slice(0, -1)).map(tagSlug));
+    const types = [];
+    for (const x of tree) if (x.length > 1 && TYPE_PARENT.test(x[0])) types.push(x[x.length - 1]);
+    const typeSlugs = new Set(types.map(tagSlug));
+    const topics = [];
+    for (const k of keywords) {
+      const prefixed = k.match(TYPE_PREFIX);
+      if (prefixed) types.push(prefixed[1].trim());
+      else if (!parents.has(tagSlug(k)) && !typeSlugs.has(tagSlug(k))) topics.push(k);
+    }
+    return { taken, year: taken ? Number(taken.slice(0, 4)) : null, keywords, topics, types: [...new Set(types)], title };
   } catch {
-    return { taken: null, year: null, keywords: [], title: null };
+    return { taken: null, year: null, keywords: [], topics: [], types: [], title: null };
   }
 }
 
@@ -257,15 +290,54 @@ export async function loadContent({ fresh = false } = {}) {
     warnings.push('content/photos/ does not exist yet');
   }
 
-  const catIds = categories.map((c) => c.id);
-  const styleIds = styles.map((s) => s.id);
   const slugs = new Map();
   const listed = new Set();
   const draft = [];
 
   // Keywords, title and capture date of every photo, read once.
   const metaByFile = new Map(await Promise.all(onDisk.map(async (f) => [f, await readMeta(path.join(PHOTOS_DIR, f))])));
-  const deriveFor = (f) => fromTags({ keywords: metaByFile.get(f)?.keywords, drive: driveByFile.get(f) }, categories, styles);
+
+  // The filters follow the keywords: a keyword that is no known category or style
+  // becomes a category, a type that is no known style becomes a style. Labels keep
+  // the keyword's spelling; categories.yaml and styles.yaml only add order, labels
+  // and extra words. content/keywords.yaml lists keywords to leave out.
+  const keywordConfig = (await readYaml('keywords.yaml', {})) ?? {};
+  const ignored = new Set(asList(keywordConfig.ignore).map(tagSlug));
+  for (const m of metaByFile.values()) {
+    m.topics = m.topics.filter((k) => !ignored.has(tagSlug(k)));
+    m.types = m.types.filter((k) => !ignored.has(tagSlug(k)));
+  }
+  const label = (k) => k.charAt(0).toUpperCase() + k.slice(1);
+  const fromKeywords = new Map();
+  const added = (list, k, kind) => {
+    const id = tagSlug(k);
+    const known = fromKeywords.get(`${kind}:${id}`);
+    if (known) return known.count++;
+    const item = { id, label: label(k), match: [], default: false };
+    fromKeywords.set(`${kind}:${id}`, { item, kind, count: 1 });
+    list.push(item);
+  };
+  const newStyles = [];
+  const newCategories = [];
+  for (const m of metaByFile.values()) {
+    for (const t of m.types) {
+      const id = tagSlug(t);
+      if (id && (fromKeywords.has(`style:${id}`) || !exactly([id], styles).length)) added(newStyles, t, 'style');
+    }
+  }
+  styles.push(...newStyles.sort((a, b) => a.label.localeCompare(b.label)));
+  for (const m of metaByFile.values()) {
+    for (const k of m.topics) {
+      const id = tagSlug(k);
+      if (!id || id === UNCATEGORIZED.id || !leftover(id, [], [])) continue;
+      if (fromKeywords.has(`category:${id}`) || (!exactly([id], styles).length && !exactly([id], categories).length)) added(newCategories, k, 'category');
+    }
+  }
+  categories.push(...newCategories.sort((a, b) => a.label.localeCompare(b.label)));
+  const catIds = categories.map((c) => c.id);
+  const styleIds = styles.map((s) => s.id);
+
+  const deriveFor = (f) => fromTags({ topics: metaByFile.get(f)?.topics, types: metaByFile.get(f)?.types, drive: driveByFile.get(f) }, categories, styles);
   const whereFrom = (f) => (driveByFile.has(f) ? 'keyword or folder name' : 'keyword');
 
   entries.forEach((e, i) => {
@@ -391,7 +463,10 @@ export async function loadContent({ fresh = false } = {}) {
     categories: [...categories, UNCATEGORIZED].filter((c) => usedCats.has(c.id)),
     styles: styles.filter((s) => usedStyles.has(s.id)),
     years: years.map((y) => ({ id: y, label: String(y) })),
-    tagReport: { unmatched: unmatchedTags(photos.map((p) => p.tags), categories, styles) },
+    tagReport: {
+      unmatched: unmatchedTags(photos.map((p) => driveTags(driveByFile.get(p.file))), categories, styles),
+      fromKeywords: [...fromKeywords.values()].map(({ item, kind, count }) => ({ kind, id: item.id, label: item.label, count })),
+    },
     warnings,
   };
   return cache;
