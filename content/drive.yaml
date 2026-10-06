@@ -3,132 +3,132 @@
 - file: 2024-05-08-groupofcows.jpg
   id: 1n_w0OS1b-MzhwGteIGxgRm4hRg5mvtz2
   md5: d0d669f8b4c39b7f2b8d11a9b4775207
-  paths: [ &a1 [ Favorieten ] ]
+  paths: [ [ Favorieten ] ]
 - file: 20250303-dscf0440.jpg
   id: 1smNnTVEornoXbeYibDkaL5QP0MF4Vxd1
   md5: 1c527e3ab7cd1ee5c5274d1fdc27d21a
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: 20250511-dscf1048.jpg
   id: 1BucsmcEKUpkja41m9XKBsPGFSLPQ7IkP
   md5: c753be34165276cf347348a10f573b2b
-  paths: [ &a2 [ Friends & family ] ]
+  paths: [ [ Friends & family ] ]
 - file: 20250511-dscf1050.jpg
   id: 1GiPeM-hnFrvQoTbQoUdogzalDVyKDunR
   md5: a2d4b3a43d9df5d0ce5e7d0759bb47d0
-  paths: [ *a2 ]
+  paths: [ [ Friends & family ] ]
 - file: 20250511-dscf1051.jpg
   id: 1RuBmaUTHGbni1vpDdRnD48mfI0-w-ydX
   md5: 9f6ebd3435aae16695fdb9ab987202ba
-  paths: [ *a2 ]
+  paths: [ [ Friends & family ] ]
 - file: dscf0369.jpg
   id: 1EvVA5Gu6qTcPwrrQGOZ8IuCapfNdajld
   md5: a99a45beee21f3f3c0187f85c45370d3
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf0407.jpg
   id: 1A4wUT9kLL-H0ETcvRfLw6EasM4QcuTEN
   md5: 7c1c48932c52789369183211f19da5d1
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf5268.jpg
   id: 1LwOVbXJ-Wj6QhitxQJ1QDPmRf15rPfkv
   md5: 143a021a24fbc13d932eb260e2f4c3de
-  paths: [ *a2 ]
+  paths: [ [ Friends & family ] ]
 - file: dscf5315.jpg
   id: 1Vb2NlFGH_ozicciGG85_lD5jzCcWuHjq
   md5: be503702469b69af24af6629d9ae9afa
-  paths: [ *a2 ]
+  paths: [ [ Friends & family ] ]
 - file: dscf5318.jpg
   id: 1useTkrkAh6n83F46onT2r55n42zKEXnh
   md5: 3ea28873c197f4beccd693acb380cd48
-  paths: [ *a2 ]
+  paths: [ [ Friends & family ] ]
 - file: dscf5441.jpg
   id: 1337nf6Qj4_woXZKjRe9tIN95cg6LK8el
   md5: cbd7e767a27ca12db01a7ce48e977e45
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf5852.jpg
   id: 1BpQo3XXNdDqNAT2LH64xWceO5P_wY17t
   md5: 4677ba8202df6e899f35fd1c7906f4d5
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf6870.jpg
   id: 1B3_7TQip1E0AvsKQ5JxqGme8JGcW4ynh
   md5: ec0efefd08c69d9642f24c4984fe6d98
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf6912.jpg
   id: 1DO2R9qCZ8vxZlsCfRtAxfbL--_L3KYtg
   md5: 246a6fdaff7485f68245bdba17781d92
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7048.jpg
   id: 1XK63EcVhrfactyO5rbMfgJN19hOt8u3E
   md5: 51db4c4909f8febf079eb59437a6ab5b
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7079.jpg
   id: 1RwzpvsL3rSqHKKnb0rP9nXMJ6YcDmpUd
   md5: 17c391f3c52562012b03a2088fdd60c0
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7418.jpg
   id: 1Qfem7hWDl-AoQHjxIKPMVNq981xM02Aq
   md5: 4f61ee79c7499fbc5e3100532a702ed5
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7465.jpg
   id: 1btp-JcPVb-cxZupuy3-eIssa1GqHxphL
   md5: 10128d4763c8a451495446f1f865fae1
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7473.jpg
   id: 1xG8hgWmTNG5VvaunONg9o5nCenpYkHdX
   md5: 68c9402e4ed6e0619d17d7bd118caf9d
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7491.jpg
   id: 19MTm5fLjaccHRiURKC8z-6U-FqLgEL0M
   md5: 430bd2a3b66391472db76b04e0ea0ccc
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7570.jpg
   id: 1gfT8v1PQObYd_umXNrwh3ATuoMtjFSBt
   md5: ecb9bee756e31a567c86a98eed53f2cf
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7702.jpg
   id: 1HUsPhK5LH5hatfg8psWV-Rfq2hYeuS93
   md5: 0ec60a738c34446cdbf71736b604e7fd
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7747-2-3.jpg
   id: 169bYS447_J_rGpu8pTs3rehTWl6d-bhR
   md5: b7c899f8510cbe627e3f62489e2cce85
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7773-2.jpg
   id: 1s7jkaoyeM802Bhr3Mc6q84wsIwcumv_g
   md5: a4eabb8f731c06d9a0eb4b62928e70c9
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7802.jpg
   id: 1hmpONBT15PwD1IkURpaoIg8sPmZ27ZN5
   md5: 60f37422c0150c6d710cdfc66fc862c4
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf7822.jpg
   id: 1j1s-H72uv4z4ONJlgnDe8Lq0qUU344fw
   md5: fe93df8fb1583f942a27641df7a66b9c
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9396-2.jpg
   id: 14Yp8wyPRV7unzj9YFeynLrgRfisA9l92
   md5: 91f5411bf0786209b09e48fc9c57c0b9
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9467.jpg
   id: 1bdwC1iRTqjk-iaB5S7-wbtKXznxKwGZn
   md5: d77b17f7edbe2d165ca30aaa4942fc40
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9534.jpg
   id: 1EOHJMzGaf_x4p1H8b34nvhR2CnwVDZs4
   md5: f447abee9a93bc81c3d8895437e902c5
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9535.jpg
   id: 1XCUhlVaLjQtIdtoSVkXaaEyiRyP8Pnry
   md5: 8d740c545ee4e141619117dee491d855
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9564.jpg
   id: 1WPIllPuKdzyqJ_TWKaJwZMesr35-TmZp
   md5: 19bfad1e4198c0a3a36cf7de30dd4a61
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9644.jpg
   id: 1mHunnPF81awcg4srvQC4pXvuETR4x-YO
   md5: 146f52d22a21530a744ebf055cdf6cfa
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
 - file: dscf9665.jpg
   id: 1jDNmQoyESCe_u0VyoFmXqUTU7UnKemBK
   md5: e5909e6c7ca2dee1d6148b672ea7aa60
-  paths: [ *a1 ]
+  paths: [ [ Favorieten ] ]
