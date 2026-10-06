@@ -6,15 +6,19 @@
 //
 // The folder comes from DRIVE_FOLDER (an ID or a folder URL) or driveFolder in
 // src/site.config.mjs. Access, one of:
-//   GOOGLE_API_KEY          an API key with the Drive API enabled; works when the
-//                           folder is shared as "anyone with the link"
 //   GOOGLE_SERVICE_ACCOUNT  a service account key (the JSON itself or a path to
 //                           the file); works for a private folder shared with the
 //                           service account's e-mail address
+//   GOOGLE_API_KEY          an API key with the Drive API enabled; works when the
+//                           folder is shared as "anyone with the link"
+//   nothing                 the folder is shared as "anyone with the link": the
+//                           script reads Drive's public folder pages instead of the API
 //
-// Unchanged files are skipped (Drive's MD5 checksum), changed files are
-// downloaded again, and files that were removed from Drive are removed from
-// content/photos/. Photos you added to content/photos/ yourself are never touched.
+// Unchanged files are skipped, files that were removed from Drive are removed
+// from content/photos/. With an API key or service account a file changed in
+// Drive is downloaded again (Drive's MD5 checksum); without one it is not, because
+// the public pages give no checksum. Photos you added to content/photos/ yourself
+// are never touched.
 //
 //   node scripts/drive-import.mjs [--dry-run]
 import { readFile, writeFile, rename, unlink, access, mkdir } from 'node:fs/promises';
@@ -64,13 +68,17 @@ async function serviceAccountToken(raw) {
   return (await res.json()).access_token;
 }
 
+// A Google API key starts with "AIza". Anything else in GOOGLE_API_KEY (a folder
+// link, for example) means there is no key, and the public folder pages are used.
+const apiKey = /^AIza[\w-]{30,}$/.test(process.env.GOOGLE_API_KEY?.trim() ?? '') ? process.env.GOOGLE_API_KEY.trim() : null;
+const account = process.env.GOOGLE_SERVICE_ACCOUNT?.trim() || null;
+const LINK_MODE = !account && !apiKey;
+
 async function makeClient() {
-  const { GOOGLE_API_KEY: apiKey, GOOGLE_SERVICE_ACCOUNT: account } = process.env;
   let headers = {};
   let extra = {};
   if (account) headers = { Authorization: `Bearer ${await serviceAccountToken(account)}` };
-  else if (apiKey) extra = { key: apiKey };
-  else fail('set GOOGLE_API_KEY (folder shared as "anyone with the link") or GOOGLE_SERVICE_ACCOUNT (private folder)');
+  else extra = { key: apiKey };
 
   return async function drive(route, params = {}, { raw = false } = {}) {
     const q = new URLSearchParams({ supportsAllDrives: 'true', ...params, ...extra });
@@ -89,6 +97,60 @@ async function makeClient() {
       return raw ? Buffer.from(await res.arrayBuffer()) : res.json();
     }
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Public folder pages, for a folder shared as "anyone with the link"  */
+/* ------------------------------------------------------------------ */
+
+const MIME_BY_EXT = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.tif': 'image/tiff', '.tiff': 'image/tiff',
+  '.avif': 'image/avif', '.heic': 'image/heif', '.heif': 'image/heif', '.gif': 'image/gif', '.dng': 'image/x-raw', '.cr2': 'image/x-raw',
+  '.cr3': 'image/x-raw', '.nef': 'image/x-raw', '.arw': 'image/x-raw', '.raf': 'image/x-raw', '.orf': 'image/x-raw', '.rw2': 'image/x-raw',
+};
+const BROWSER = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36' };
+
+const decodeHtml = (s) =>
+  s.replace(/&(amp|lt|gt|quot|#39|#x27|#(\d+));/g, (m, name, num) =>
+    num ? String.fromCodePoint(Number(num)) : { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'" }[name]);
+
+async function fetchRetry(url, what) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, { headers: BROWSER, redirect: 'follow' });
+    if ((res.status === 429 || res.status >= 500) && attempt < 6) {
+      await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
+      continue;
+    }
+    if (!res.ok) fail(`${what}: HTTP ${res.status}`);
+    return res;
+  }
+}
+
+// drive.google.com/embeddedfolderview lists the files and folders of a shared folder.
+async function listPublic(folderId) {
+  const res = await fetchRetry(`https://drive.google.com/embeddedfolderview?id=${folderId}`, `folder ${folderId}`);
+  const html = await res.text();
+  if (!/flip-entry|flip-entries/.test(html)) {
+    fail(`folder ${folderId} is not readable without signing in. Share it as "anyone with the link" (viewer), or set GOOGLE_API_KEY to an API key`);
+  }
+  const files = [];
+  for (const chunk of html.split(/<div class="flip-entry"/).slice(1)) {
+    const id = chunk.match(/id="entry-([\w-]+)"/)?.[1];
+    const href = chunk.match(/<a href="([^"]+)"/)?.[1] ?? '';
+    const name = decodeHtml(chunk.match(/<div class="flip-entry-title">([^<]*)<\/div>/)?.[1] ?? '').trim();
+    if (!id || !name) continue;
+    if (/\/drive\/(?:u\/\d+\/)?folders\//.test(href)) files.push({ id, name, mimeType: FOLDER_MIME });
+    else files.push({ id, name, mimeType: MIME_BY_EXT[path.extname(name).toLowerCase()] ?? 'application/octet-stream' });
+  }
+  return files;
+}
+
+async function downloadPublic(id, name) {
+  const res = await fetchRetry(`https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`, name);
+  if ((res.headers.get('content-type') ?? '').includes('text/html')) {
+    fail(`${name}: Drive returned a web page instead of the photo; it may be too popular to download right now or not shared. Try again later`);
+  }
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,14 +179,14 @@ async function listChildren(drive, folderId) {
 
 // Every image under the root folder, with the folder path it was found in.
 // A shortcut counts as the file or folder it points to.
-async function walk(drive, rootId) {
-  const images = [];
+async function walk(listChildren, drive, rootId) {
+  const images = new Map();
   const skipped = [];
   const seenFolders = new Set([rootId]);
   const queue = [{ id: rootId, path: [] }];
   while (queue.length) {
     const folder = queue.shift();
-    for (let f of await listChildren(drive, folder.id)) {
+    for (let f of await listChildren(folder.id)) {
       if (f.mimeType === SHORTCUT_MIME) {
         const target = f.shortcutDetails?.targetId;
         if (!target) continue;
@@ -138,12 +200,14 @@ async function walk(drive, rootId) {
         queue.push({ id: f.id, path: [...folder.path, f.name] });
       } else if (f.mimeType?.startsWith('image/')) {
         const ext = path.extname(f.name).toLowerCase();
-        if (SUPPORTED_EXT.has(ext) || (!ext && EXT_BY_MIME[f.mimeType])) images.push({ ...f, path: folder.path });
-        else skipped.push([...folder.path, f.name].join('/'));
+        if (!SUPPORTED_EXT.has(ext) && !(!ext && EXT_BY_MIME[f.mimeType])) skipped.push([...folder.path, f.name].join('/'));
+        // A file reached twice (through a shortcut) is one photo with two folder paths.
+        else if (images.has(f.id)) images.get(f.id).paths.push(folder.path);
+        else images.set(f.id, { ...f, path: folder.path, paths: [folder.path] });
       }
     }
   }
-  return { images, skipped };
+  return { images: [...images.values()], skipped };
 }
 
 /* ------------------------------------------------------------------ */
@@ -151,7 +215,9 @@ async function walk(drive, rootId) {
 /* ------------------------------------------------------------------ */
 
 function folderId() {
-  const raw = process.env.DRIVE_FOLDER || site.driveFolder;
+  // A folder link in GOOGLE_API_KEY counts as the folder to import.
+  const linkInKey = !apiKey && /drive\.google\.com/.test(process.env.GOOGLE_API_KEY ?? '') ? process.env.GOOGLE_API_KEY.trim() : null;
+  const raw = process.env.DRIVE_FOLDER || linkInKey || site.driveFolder;
   if (!raw) fail('set DRIVE_FOLDER or driveFolder in src/site.config.mjs');
   return raw.match(/folders\/([\w-]+)/)?.[1] ?? raw.match(/[?&]id=([\w-]+)/)?.[1] ?? raw;
 }
@@ -166,22 +232,54 @@ async function readManifest() {
   }
 }
 
-const drive = await makeClient();
+const drive = LINK_MODE ? null : await makeClient();
 const root = folderId();
-console.log(`drive-import: reading folder ${root} and all its subfolders`);
-const { images, skipped } = await walk(drive, root);
+if (LINK_MODE && process.env.GOOGLE_API_KEY) console.warn('drive-import: GOOGLE_API_KEY holds no API key (keys start with "AIza"), reading the folder as a shared link');
+console.log(`drive-import: reading folder ${root} and all its subfolders${LINK_MODE ? ' through its shared link' : ''}`);
+const { images, skipped } = await walk(LINK_MODE ? listPublic : (id) => listChildren(drive, id), drive, root);
+const fetchFile = (d) => (LINK_MODE ? downloadPublic(d.id, d.file) : drive(`files/${d.id}`, { alt: 'media' }, { raw: true }));
+
+const previous = await readManifest();
+const prevById = new Map(previous.map((m) => [m.id, m]));
+
+// The public pages give no checksum. Photos imported before keep the checksum
+// they had; new ones are downloaded first, so duplicates can still be found.
+const staged = new Map();
+if (LINK_MODE && !DRY_RUN) {
+  await mkdir(PHOTOS_DIR, { recursive: true });
+  const fresh = [];
+  for (const img of images) {
+    const prev = prevById.get(img.id);
+    if (prev && (await exists(path.join(PHOTOS_DIR, prev.file)))) img.md5Checksum = prev.md5;
+    else fresh.push(img);
+  }
+  if (fresh.length) console.log(`drive-import: downloading ${fresh.length} new photos`);
+  let done = 0;
+  const queue = [...fresh];
+  await Promise.all(
+    Array.from({ length: 4 }, async () => {
+      for (let img = queue.shift(); img; img = queue.shift()) {
+        const buf = await downloadPublic(img.id, [...img.path, img.name].join('/'));
+        const tmp = path.join(PHOTOS_DIR, `.drive-${img.id}.part`);
+        await writeFile(tmp, buf);
+        staged.set(img.id, tmp);
+        img.md5Checksum = createHash('md5').update(buf).digest('hex');
+        img.size = String(buf.length);
+        if (++done % 10 === 0 || done === fresh.length) console.log(`drive-import: ${done}/${fresh.length} downloaded`);
+      }
+    }),
+  );
+}
 
 // The same photo in several folders is imported once and gets the tags of every folder.
 const byContent = new Map();
 for (const img of images) {
   const key = img.md5Checksum ?? img.id;
   const known = byContent.get(key);
-  if (known) known.paths.push(img.path);
-  else byContent.set(key, { ...img, paths: [img.path] });
+  if (known) known.paths.push(...img.paths);
+  else byContent.set(key, { ...img, paths: [...img.paths] });
 }
 
-const previous = await readManifest();
-const prevById = new Map(previous.map((m) => [m.id, m]));
 const taken = new Set(previous.map((m) => m.file));
 const next = [];
 const downloads = [];
@@ -218,9 +316,14 @@ if (!DRY_RUN) {
   const queue = [...downloads];
   async function worker() {
     for (let d = queue.shift(); d; d = queue.shift()) {
-      const buf = await drive(`files/${d.id}`, { alt: 'media' }, { raw: true });
-      if (d.md5 && createHash('md5').update(buf).digest('hex') !== d.md5) fail(`${d.file}: checksum mismatch after download`);
       const target = path.join(PHOTOS_DIR, d.file);
+      if (staged.has(d.id)) {
+        await rename(staged.get(d.id), target);
+        staged.delete(d.id);
+        continue;
+      }
+      const buf = await fetchFile(d);
+      if (d.md5 && createHash('md5').update(buf).digest('hex') !== d.md5) fail(`${d.file}: checksum mismatch after download`);
       await writeFile(`${target}.part`, buf);
       await rename(`${target}.part`, target);
       done++;
@@ -229,6 +332,8 @@ if (!DRY_RUN) {
   }
   await Promise.all(Array.from({ length: 4 }, worker));
   for (const m of removed) await unlink(path.join(PHOTOS_DIR, m.file)).catch(() => {});
+  // Downloads that turned out to be duplicates of a photo in another folder.
+  for (const tmp of staged.values()) await unlink(tmp).catch(() => {});
 
   next.sort((a, b) => a.file.localeCompare(b.file));
   const header = [
