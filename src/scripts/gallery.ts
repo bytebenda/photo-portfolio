@@ -41,6 +41,7 @@ const header = $<HTMLElement>('header');
 const grid = $<HTMLElement>('grid');
 const empty = $<HTMLElement>('empty');
 const tiles = Array.from(grid.querySelectorAll<HTMLAnchorElement>('.tile'));
+const hero = document.getElementById('hero');
 
 /* ------------------------------------------------------------------ */
 /* Hiding header and scroll gap                                        */
@@ -90,6 +91,13 @@ window.addEventListener(
     const dt = Math.max(1, t - lastT);
     lastY = y;
     lastT = t;
+
+    // Over the globe hero the header stays put and the gap stays at rest.
+    if (hero && root.classList.contains('hero') && y < hero.offsetHeight) {
+      travel = 0;
+      setHeaderHidden(false);
+      return;
+    }
 
     if (y < 10) {
       travel = 0;
@@ -207,6 +215,7 @@ function applyFilters(animate = true) {
   }
   empty.hidden = visible.some(Boolean);
   renderFilterUI();
+  document.dispatchEvent(new Event('gallery:layout'));
 }
 
 // Removed squares fade out, the remaining squares slide to their new place.

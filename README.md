@@ -81,6 +81,15 @@ The Location section of the filter comes from the subfolders of the Drive folder
 - Deeper subfolders don't change the location; a photo in several folders gets each location.
 - The section appears once at least one country folder exists. A country with only Other shows as one row.
 
+## Globe hero
+
+The home page opens on a full-screen globe made of the gallery's square thumbnails, turning once every 90 seconds. Dragging or swiping sideways spins it, and on desktop it leans a little towards the cursor. Scrolling one screen down unrolls the globe into a flat sheet, like a map peeled off a globe, and the sheet then settles into the grid: one copy of each photo flies to its square and the other copies fade out. The animation follows the scroll position, so scrolling back up builds the globe again. The Filter button appears once the grid is reached.
+
+- The globe has about 220 tiles on desktop and 120 on phones, so photos repeat; each run of tiles holds every photo once, in a shuffled order.
+- It shows only on the home page without filters in the address. Links to a photo (`/photo/...`) or a filtered view open on the grid as before.
+- It is drawn with WebGL (Three.js, about 130 KB gzipped). That code loads after the page, so the grid is not slowed down. Without WebGL or JavaScript the page is the plain grid.
+- Visitors whose system asks for reduced motion see a still globe that fades into the grid while scrolling.
+
 ## Rules the build checks
 
 | Rule | Result when broken |
@@ -111,7 +120,8 @@ The Location section of the filter comes from the subfolders of the Drive folder
 - `src/lib/content.mjs` reads the YAML, the originals and their EXIF dates, turns keywords and Drive folder names into categories and styles, and applies the rules above. The pages, the image step and `npm run check` all use it.
 - `scripts/images.mjs` makes square thumbnails (400 and 800 px), large versions (1600 and 3000 px on the long edge, or the original size when smaller) in AVIF and WebP, a small preview and a JPEG for link previews. Output goes to `public/img/` and is named after a hash of the original, so unchanged photos are skipped. It also writes `content/images.json` (committed, no pixels) with each original's checksum, size, keywords, camera and lens and whether it is black and white. Making the images for 33 photos takes about 7 minutes; with the Actions cache a run only makes those of new photos.
 - `src/components/Gallery.astro` renders the header, grid, footer and photo view. `/photo/<slug>` pages render the same view with the photo open and their own title and preview image.
-- `src/scripts/gallery.ts` is the only JavaScript: hiding header, the scroll gap spring, filters (state in the URL query; "Deselect all" and "Show all" at the top of the panel), and the photo view (history, keyboard, swipe, preloading, the (i) panel with location, camera and lens, which `i` toggles, and zoom up to 4x: pinch, pan with one finger and double tap on touch screens; the minus and plus icons, a click, dragging, trackpad pinch and the keys `+`, `-` and `0` on desktop). Camera and lens come from the EXIF of the original, stored in `content/images.json`; the location comes from the photo's folder in Favorites ("Pajottenland, Belgium", or only the country for its Other; none for photos outside a country folder). A photo without any of the three has no (i). Animations switch off when the visitor's system asks for reduced motion.
+- `src/scripts/gallery.ts` handles the page: hiding header, the scroll gap spring, filters (state in the URL query; "Deselect all" and "Show all" at the top of the panel), and the photo view (history, keyboard, swipe, preloading, the (i) panel with location, camera and lens, which `i` toggles, and zoom up to 4x: pinch, pan with one finger and double tap on touch screens; the minus and plus icons, a click, dragging, trackpad pinch and the keys `+`, `-` and `0` on desktop). Camera and lens come from the EXIF of the original, stored in `content/images.json`; the location comes from the photo's folder in Favorites ("Pajottenland, Belgium", or only the country for its Other; none for photos outside a country folder). A photo without any of the three has no (i). Animations switch off when the visitor's system asks for reduced motion.
+- `src/components/Hero.astro`, `src/scripts/hero.ts` and `src/scripts/globe.ts` make the globe hero: see below.
 - Without JavaScript every square links to its photo page, so the site still works.
 
 ## Building and deploying

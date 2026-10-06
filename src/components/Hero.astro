@@ -1,0 +1,36 @@
+---
+// Full-screen globe of all photos in front of the grid. Scrolling unrolls the
+// globe into a sheet that settles into the gallery. Only on the home page
+// without filters, with JavaScript and WebGL; otherwise the page is the grid.
+---
+
+<script is:inline>
+  // Runs before the first paint, so the grid never jumps down when the hero appears.
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (location.pathname !== '/' || ['loc', 'cat', 'year', 'style'].some(function (k) { return q.has(k); })) return;
+    try {
+      var c = document.createElement('canvas');
+      var gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (!gl) return;
+      var lose = gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+    } catch (e) {
+      return;
+    }
+    document.documentElement.classList.add('hero', 'hero-on');
+  })();
+</script>
+
+<section class="hero-space" id="hero" aria-label="Photo globe">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <canvas class="hero-canvas" id="hero-canvas" aria-hidden="true"></canvas>
+  <a class="hero-hint" id="hero-hint" href="#grid">
+    <span>Scroll</span>
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5l4 4 4-4" /></svg>
+  </a>
+</section>
+
+<script>
+  import '../scripts/hero.ts';
+</script>

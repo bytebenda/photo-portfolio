@@ -622,7 +622,100 @@ html:not(.js) .glass-btn {
   }
 }
 
+/* Globe hero. The html element gets `hero` (the hero runs) and `hero-on`
+   (scrolled less than one screen) from the inline script in Hero.astro. */
+
+.hero-space {
+  display: none;
+  position: relative;
+  height: 100svh;
+}
+.hero .hero-space {
+  display: block;
+}
+.hero-canvas,
+.hero-glow {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.hero-canvas {
+  z-index: 10;
+  display: block;
+  touch-action: pan-y;
+  cursor: grab;
+}
+.hero-canvas.is-dragging {
+  cursor: grabbing;
+}
+.hero-glow {
+  z-index: 9;
+  background: radial-gradient(circle at 50% calc(50% + 32px), rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 38%, transparent 62%);
+  opacity: calc(1 - var(--hero-p, 0) * 1.6);
+}
+.hero-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  color: var(--fg-2);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  opacity: calc(1 - var(--hero-p, 0) * 8);
+}
+.hero-hint svg {
+  animation: hint-bob 1.8s var(--ease) infinite;
+}
+@keyframes hint-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(5px);
+    opacity: 1;
+  }
+}
+html:not(.hero-on) .hero-canvas,
+html:not(.hero-on) .hero-glow,
+html:not(.hero-on) .hero-hint {
+  visibility: hidden;
+}
+/* The Filter button appears with the gallery; until then the canvas covers the grid. */
+.filter {
+  transition: opacity 300ms var(--ease);
+}
+.hero-on .filter {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 300ms var(--ease), visibility 0s 300ms;
+}
+.hero-on .grid {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .hero-on .grid {
+    opacity: var(--hero-p, 0);
+  }
+  .hero-canvas {
+    opacity: calc(1 - var(--hero-p, 0));
+  }
+  .hero-hint svg {
+    animation: none;
+  }
   .header,
   .tile img,
   .glass-btn,

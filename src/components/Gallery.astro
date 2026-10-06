@@ -3,6 +3,7 @@
 // and the photo viewer. On /photo/<slug> the viewer is rendered open.
 import { loadContent } from '../lib/content.mjs';
 import site from '../site.config.mjs';
+import Hero from './Hero.astro';
 
 interface Props {
   openSlug?: string;
@@ -44,6 +45,7 @@ const clientPhotos = photos.map((p) => ({
   ar: Number(p.ar.toFixed(4)),
   focus: p.focus,
   preview: p.images.preview.url,
+  thumbs: p.images.thumb.webp.map((s) => s.url),
   avif: srcset(p.images.large.avif),
   webp: srcset(p.images.large.webp),
   fallback: p.images.large.webp[0].url,
@@ -121,6 +123,8 @@ const year = new Date().getFullYear();
     </div>
   </nav>
 </header>
+
+<Hero />
 
 <main>
   <h1 class="visually-hidden">Photography by {site.name}</h1>
