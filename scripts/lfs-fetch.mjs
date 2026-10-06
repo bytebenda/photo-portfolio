@@ -111,10 +111,9 @@ export async function fetchPointers(pointers) {
  */
 export async function fetchNeeded({ all = false } = {}) {
   const exists = (f) => access(f).then(() => true, () => false);
-  let sources = {};
-  try {
-    sources = JSON.parse(await readFile(path.resolve('content/images.json'), 'utf8')).photos ?? {};
-  } catch {}
+  // Read through content.mjs, so an images.json of an older version counts as empty.
+  const { readSources } = await import('../src/lib/content.mjs');
+  const sources = await readSources();
   const needed = [];
   for (const p of await findPointers()) {
     const known = sources[p.file];

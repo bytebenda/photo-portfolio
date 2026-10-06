@@ -17,7 +17,7 @@ export const IMG_URL = '/img';
 // written by scripts/images.mjs. With it, a build works from Git LFS pointer
 // files and the committed images in public/img, without downloading the originals.
 export const SOURCES_FILE = path.join(CONTENT_DIR, 'images.json');
-const SOURCES_VERSION = 1;
+const SOURCES_VERSION = 2;
 const LFS_POINTER = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([0-9a-f]{64})\nsize (\d+)/;
 
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.avif', '.heic']);
@@ -222,12 +222,20 @@ function splitKeywords(keywords, tree) {
   return { topics, types: [...new Set(types)] };
 }
 
-/** Capture date, keywords and title stored in the file. */
+// "FUJIFILM" + "X-T5" gives "FUJIFILM X-T5"; "Canon" + "Canon EOS R5" stays "Canon EOS R5".
+function withMake(make, model) {
+  const mk = typeof make === 'string' ? make.replace(/\0/g, '').trim() : '';
+  const md = typeof model === 'string' ? model.replace(/\0/g, '').trim() : '';
+  if (!md) return null;
+  return mk && !md.toLowerCase().startsWith(mk.toLowerCase().split(' ')[0]) ? `${mk} ${md}` : md;
+}
+
+/** Capture date, keywords, title, camera and lens stored in the file. */
 async function readEmbedded(buf) {
   try {
     const m = await exifr.parse(buf, {
-      ifd0: false, ifd1: false, gps: false, interop: false,
-      exif: { pick: ['DateTimeOriginal', 'CreateDate'] },
+      ifd0: { pick: ['Make', 'Model'] }, ifd1: false, gps: false, interop: false,
+      exif: { pick: ['DateTimeOriginal', 'CreateDate', 'LensMake', 'LensModel'] },
       xmp: true,
       iptc: true,
       reviveValues: false,
@@ -238,9 +246,11 @@ async function readEmbedded(buf) {
       keywords: [...new Set([...asList(m?.subject), ...asList(m?.Keywords)].map((k) => String(k).trim()).filter(Boolean))],
       tree: asList(m?.hierarchicalSubject).map((h) => String(h).split('|').map((x) => x.trim()).filter(Boolean)).filter((x) => x.length),
       title: (asText(m?.title) ?? asText(m?.ObjectName))?.trim() || null,
+      camera: withMake(m?.Make, m?.Model),
+      lens: withMake(m?.LensMake, m?.LensModel),
     };
   } catch {
-    return { taken: null, keywords: [], tree: [], title: null };
+    return { taken: null, keywords: [], tree: [], title: null, camera: null, lens: null };
   }
 }
 
