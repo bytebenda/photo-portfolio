@@ -26,4 +26,10 @@
   match: [portret, portretten, portraits, mensen, people]
 - id: architecture
   label: Architecture
-  match: [architectuur, gebouwen, buildings]
+  match: [architectuur, gebouw, gebouwen, building, buildings]
+- id: animals
+  label: Animals
+  match: [animal, dier, dieren]
+- id: dogs
+  label: Dogs
+  match: [dog, hond, honden]
