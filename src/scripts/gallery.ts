@@ -308,8 +308,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function showControls() {
   viewer.classList.add('controls-on');
   window.clearTimeout(controlsTimer);
-  // While the details are open the controls stay visible.
-  if (infoOpen) return;
+  // While the details are open or the photo is zoomed the controls stay visible.
+  if (infoOpen || zoom.s > 1) return;
   controlsTimer = window.setTimeout(() => viewer.classList.remove('controls-on'), 2000);
 }
 
@@ -387,6 +387,7 @@ function setStagePhoto(i: number) {
   stageFull.alt = p.title;
   viewer.setAttribute('aria-label', p.title);
   fillInfo(p);
+  resetZoom();
   btnPrev.href = photoPath(photos[neighbour(i, -1)]);
   btnNext.href = photoPath(photos[neighbour(i, 1)]);
   btnClose.href = `/${location.search}`;
@@ -462,6 +463,7 @@ async function closeViewer({ fromHistory = false } = {}) {
     history.replaceState(null, '', `/${location.search}`);
   }
   const i = current;
+  resetZoom();
   const to = motion() ? tileRect(i) : null;
   if (motion()) {
     animating = true;
@@ -535,24 +537,238 @@ btnNext.addEventListener('click', (e) => {
 viewer.addEventListener('mousemove', showControls, { passive: true });
 viewer.addEventListener('focusin', showControls);
 
+/* ------------------------------------------------------------------ */
+/* Zoom: pinch on touch screens; plus and minus, trackpad pinch,       */
+/* drag, keys and a click on desktop                                   */
+/* ------------------------------------------------------------------ */
+
+const zoomEl = $<HTMLElement>('zoom');
+const btnZoomIn = $<HTMLButtonElement>('zoom-in');
+const btnZoomOut = $<HTMLButtonElement>('zoom-out');
+const MAX_ZOOM = 4;
+const ZOOM_STEPS = [1, 1.5, 2, 3, 4];
+// Scale and translation of the photo inside the stage, in stage pixels.
+const zoom = { s: 1, x: 0, y: 0 };
+
+function applyZoom(animate = false) {
+  zoomEl.classList.toggle('is-animating', animate && motion());
+  zoomEl.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+  viewer.classList.toggle('is-zoomed', zoom.s > 1);
+  btnZoomOut.disabled = zoom.s <= 1;
+  btnZoomIn.disabled = zoom.s >= MAX_ZOOM;
+}
+
+// Keep the zoomed photo on screen: no empty edge where the photo is larger than
+// the screen, centred where it is smaller.
+function clampPan() {
+  const r = stage.getBoundingClientRect();
+  const fit = (pos: number, size: number, start: number, view: number) => {
+    const scaled = size * zoom.s;
+    if (scaled <= view) return (view - scaled) / 2 - start;
+    return Math.min(-start, Math.max(view - start - scaled, pos));
+  };
+  zoom.x = fit(zoom.x, r.width, r.left, window.innerWidth);
+  zoom.y = fit(zoom.y, r.height, r.top, window.innerHeight);
+}
+
+// Asks the browser for a larger file once the photo is shown bigger than the screen.
+function sharpen() {
+  const sizes = `${Math.ceil(Math.max(1, zoom.s) * 100)}vw`;
+  if (stageFull.sizes !== sizes) {
+    stageFull.sizes = sizes;
+    stageAvif.sizes = sizes;
+  }
+}
+
+/** Zooms to scale s2 around a point given in screen coordinates. */
+function zoomAt(s2: number, clientX: number, clientY: number, animate = false) {
+  const r = stage.getBoundingClientRect();
+  const px = clientX - r.left;
+  const py = clientY - r.top;
+  const next = Math.min(MAX_ZOOM, Math.max(1, s2));
+  zoom.x = px - ((px - zoom.x) * next) / zoom.s;
+  zoom.y = py - ((py - zoom.y) * next) / zoom.s;
+  zoom.s = next;
+  if (zoom.s === 1) zoom.x = zoom.y = 0;
+  else clampPan();
+  applyZoom(animate);
+  showControls();
+}
+
+function resetZoom() {
+  zoom.s = 1;
+  zoom.x = zoom.y = 0;
+  applyZoom();
+  sharpen();
+}
+
+function step(d: number) {
+  const next = d > 0 ? ZOOM_STEPS.find((z) => z > zoom.s + 0.01) : [...ZOOM_STEPS].reverse().find((z) => z < zoom.s - 0.01);
+  zoomAt(next ?? zoom.s, window.innerWidth / 2, window.innerHeight / 2, true);
+  sharpen();
+}
+
+btnZoomIn.addEventListener('click', () => step(1));
+btnZoomOut.addEventListener('click', () => step(-1));
+zoomEl.addEventListener('transitionend', () => zoomEl.classList.remove('is-animating'));
+window.addEventListener('resize', () => {
+  if (zoom.s > 1) resetZoom();
+});
+
+// Trackpad pinch arrives as a wheel event with ctrlKey.
+viewer.addEventListener(
+  'wheel',
+  (e) => {
+    if (current === null || !e.ctrlKey) return;
+    e.preventDefault();
+    zoomAt(zoom.s * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+    sharpen();
+  },
+  { passive: false },
+);
+
+// Mouse: drag to pan when zoomed, a click without dragging zooms in at that point.
+let drag: { x: number; y: number; zx: number; zy: number; moved: boolean } | null = null;
+zoomEl.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse' || e.button !== 0) return;
+  e.preventDefault();
+  drag = { x: e.clientX, y: e.clientY, zx: zoom.x, zy: zoom.y, moved: false };
+  zoomEl.setPointerCapture(e.pointerId);
+});
+zoomEl.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  const dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true;
+  if (zoom.s === 1) return;
+  zoomEl.classList.add('is-dragging');
+  zoom.x = drag.zx + dx;
+  zoom.y = drag.zy + dy;
+  clampPan();
+  applyZoom();
+});
+zoomEl.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const clicked = !drag.moved;
+  drag = null;
+  zoomEl.classList.remove('is-dragging');
+  if (clicked && zoom.s === 1) {
+    zoomAt(2, e.clientX, e.clientY, true);
+    sharpen();
+  }
+});
+zoomEl.addEventListener('pointercancel', () => {
+  drag = null;
+  zoomEl.classList.remove('is-dragging');
+});
+
+/* Touch: swipe left or right for the next photo and down to close; two fingers
+   pinch; one finger pans a zoomed photo; a double tap zooms in or out. */
 let touchX = 0;
 let touchY = 0;
-let touchCount = 0;
+let touchMax = 0; // most fingers on the screen during this gesture
+let touchZoomed = false; // the gesture zoomed or panned, so it is no swipe
+let lastTap = 0;
+let pinch: { cx: number; cy: number; d: number; s: number } | null = null;
+let pan: { x: number; y: number; zx: number; zy: number } | null = null;
+
+const distance = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+function startPinch(e: TouchEvent) {
+  const [a, b] = [e.touches[0], e.touches[1]];
+  const r = stage.getBoundingClientRect();
+  const mx = (a.clientX + b.clientX) / 2 - r.left;
+  const my = (a.clientY + b.clientY) / 2 - r.top;
+  // The point of the photo under the fingers, in unscaled stage pixels.
+  pinch = { cx: (mx - zoom.x) / zoom.s, cy: (my - zoom.y) / zoom.s, d: distance(a, b), s: zoom.s };
+  pan = null;
+  zoomEl.classList.add('is-gesture');
+}
+
 viewer.addEventListener(
   'touchstart',
   (e) => {
-    touchCount = e.touches.length;
-    touchX = e.touches[0].clientX;
-    touchY = e.touches[0].clientY;
+    if (e.touches.length === 1) {
+      touchMax = 1;
+      touchZoomed = zoom.s > 1;
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+      pan = zoom.s > 1 ? { x: touchX, y: touchY, zx: zoom.x, zy: zoom.y } : null;
+    }
+    touchMax = Math.max(touchMax, e.touches.length);
+    if (e.touches.length === 2 && current !== null) {
+      touchZoomed = true;
+      startPinch(e);
+    }
     showControls();
   },
   { passive: true },
 );
+
+viewer.addEventListener(
+  'touchmove',
+  (e) => {
+    if (pinch && e.touches.length >= 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const r = stage.getBoundingClientRect();
+      // Below 1x the photo follows the fingers a little, then springs back.
+      const s2 = Math.min(MAX_ZOOM, Math.max(0.8, (pinch.s * distance(a, b)) / pinch.d));
+      zoom.s = s2;
+      zoom.x = (a.clientX + b.clientX) / 2 - r.left - pinch.cx * s2;
+      zoom.y = (a.clientY + b.clientY) / 2 - r.top - pinch.cy * s2;
+      zoomEl.classList.remove('is-animating');
+      zoomEl.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+    } else if (pan && e.touches.length === 1) {
+      zoom.x = pan.zx + e.touches[0].clientX - pan.x;
+      zoom.y = pan.zy + e.touches[0].clientY - pan.y;
+      clampPan();
+      applyZoom();
+    }
+  },
+  { passive: true },
+);
+
 viewer.addEventListener('touchend', (e) => {
-  if (touchCount > 1) return;
+  if (e.touches.length === 0) zoomEl.classList.remove('is-gesture');
+  if (pinch && e.touches.length < 2) {
+    pinch = null;
+    if (zoom.s < 1.05) resetZoom();
+    else {
+      clampPan();
+      applyZoom(true);
+      sharpen();
+    }
+    showControls();
+    // A finger left on the screen continues as a pan.
+    if (e.touches.length === 1 && zoom.s > 1) {
+      const t = e.touches[0];
+      pan = { x: t.clientX, y: t.clientY, zx: zoom.x, zy: zoom.y };
+    }
+    return;
+  }
+  if (e.touches.length > 0) return;
+  pan = null;
   const t = e.changedTouches[0];
   const dx = t.clientX - touchX;
   const dy = t.clientY - touchY;
+  const isTap = touchMax === 1 && Math.hypot(dx, dy) < 10;
+  if (isTap && current !== null && (e.target as Element).closest('#zoom')) {
+    const now = performance.now();
+    if (now - lastTap < 300) {
+      lastTap = 0;
+      if (zoom.s > 1) {
+        zoomAt(1, t.clientX, t.clientY, true);
+        sharpen();
+      } else {
+        zoomAt(2.5, t.clientX, t.clientY, true);
+        sharpen();
+      }
+      return;
+    }
+    lastTap = now;
+  }
+  if (touchMax > 1 || touchZoomed || zoom.s > 1) return;
   if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
   else if (dy > 80 && Math.abs(dy) > Math.abs(dx)) closeViewer();
 });
@@ -561,13 +777,18 @@ document.addEventListener('keydown', (e) => {
   if (current !== null) {
     if (e.key === 'Escape') {
       if (infoOpen) setInfo(false);
+      else if (zoom.s > 1) zoomAt(1, 0, 0, true);
       else closeViewer();
     } else if (e.key === 'i' && !e.metaKey && !e.ctrlKey && !e.altKey) setInfo(!infoOpen);
+    else if ((e.key === '+' || e.key === '=') && !e.metaKey && !e.ctrlKey) step(1);
+    else if (e.key === '-' && !e.metaKey && !e.ctrlKey) step(-1);
+    else if (e.key === '0' && !e.metaKey && !e.ctrlKey) zoomAt(1, 0, 0, true);
     else if (e.key === 'ArrowRight') go(1);
     else if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === 'Tab') {
       // Keep focus inside the viewer.
-      const items: HTMLElement[] = [btnClose, btnPrev, btnNext, ...(btnInfo.hidden ? [] : [btnInfo])];
+      const zoomButtons = getComputedStyle(btnZoomIn.parentElement!).display === 'none' ? [] : [btnZoomOut, btnZoomIn].filter((b) => !b.disabled);
+      const items: HTMLElement[] = [btnClose, btnPrev, btnNext, ...zoomButtons, ...(btnInfo.hidden ? [] : [btnInfo])];
       const at = items.indexOf(document.activeElement as HTMLAnchorElement);
       e.preventDefault();
       items[(at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
