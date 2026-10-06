@@ -361,12 +361,14 @@ for (const s of skipped) console.warn(`warning: skipped ${s}: only JPEG, PNG, We
 if (!DRY_RUN) {
   try {
     const { photos, tagReport } = await loadContent({ fresh: true });
+    const fromKeywords = tagReport.fromKeywords.map((k) => `${k.label} (${k.kind === 'style' ? 'type, ' : ''}${k.count})`);
+    if (fromKeywords.length) console.log(`drive-import: new filters from keywords: ${fromKeywords.join(', ')}`);
     const fromDrive = photos.filter((p) => p.drive);
     const noCat = fromDrive.filter((p) => p.categories.includes('uncategorized'));
     const withKeywords = fromDrive.filter((p) => p.keywords.length).length;
     console.log(`drive-import: ${fromDrive.length - noCat.length} of ${fromDrive.length} Drive photos have a category, ${withKeywords} have keywords`);
     if (tagReport.unmatched.length) {
-      console.log('drive-import: keywords and folder words that match no category or style (add them to "match" in categories.yaml or styles.yaml, or ignore them):');
+      console.log('drive-import: folder words that match no category or style (add them to "match" in categories.yaml or styles.yaml to use them):');
       for (const [tag, n] of tagReport.unmatched) console.log(`  ${tag} (${n} ${n === 1 ? 'photo' : 'photos'})`);
     }
   } catch (e) {

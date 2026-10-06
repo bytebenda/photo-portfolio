@@ -1,9 +1,11 @@
 # Allowed styles (the processing look). Order here is the order in the Style filter.
 #
-# Matched against a photo's keywords and Drive folder names, as in categories.yaml.
-# A photo has one style. When several match, the first one in this list wins, but
-# the default style only wins when nothing else matches, so the keywords "film"
-# and "colour" give film. No match at all gives the default style.
+# The type of a photo comes from a keyword under a "Type" parent in Lightroom
+# (Type > Film) or written as "type: film". A type not listed here becomes a
+# new option in the filter. A plain keyword or folder name matching a word below
+# also sets the type. A photo has one type: a Type keyword first, otherwise the
+# first match in this list, where the default only wins when nothing else
+# matches. No match at all gives the default.
 - id: colour
   label: Colour
   match: [color, kleur]

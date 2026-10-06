@@ -36,7 +36,10 @@ export type Content = {
   categories: Option[];
   styles: Option[];
   years: Option<number>[];
-  tagReport: { unmatched: [string, number][] };
+  tagReport: {
+    unmatched: [string, number][];
+    fromKeywords: { kind: 'category' | 'style'; id: string; label: string; count: number }[];
+  };
   warnings: string[];
 };
 
@@ -55,7 +58,7 @@ export function slugify(s: string): string;
 export function imageSet(p: Pick<Photo, 'slug' | 'hash' | 'width' | 'height'>): ImageSet;
 export function driveTags(d: Pick<DriveEntry, 'paths' | 'description'> | null | undefined): string[];
 export function fromTags(
-  source: { keywords?: string[]; drive?: DriveEntry | null },
+  source: { topics?: string[]; types?: string[]; drive?: DriveEntry | null },
   categories: ListItem[],
   styles: ListItem[],
 ): { tags: string[]; categories: string[]; style: string | null; year: number | null; title: string | null };

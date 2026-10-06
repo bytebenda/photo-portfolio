@@ -41,22 +41,30 @@ Access is one environment variable, or none:
 
 `.github/workflows/drive-import.yml` runs the import from the Actions tab, every Monday, and on every push that changes the import script or the workflow, and commits the result to the branch it ran on, so Vercel publishes the new photos without a local checkout. Add the variable above as a repository secret when you use one.
 
-### Categories and style from keywords
+### Filters from keywords
 
-Give a photo its categories and its style as keywords in your photo editor before you upload it to Drive. The keywords are stored inside the JPEG, so they count whatever folder the photo is in. A photo can have several categories and has exactly one style.
+The filters follow the keywords in your photos. Give a photo its categories and its type (the Style filter) as keywords in your photo editor before you upload it to Drive. The keywords are stored inside the JPEG, so they count whatever folder the photo is in. Every new keyword becomes a filter option at the next import; nothing needs to be listed first. A photo can have several categories and has exactly one type.
 
-In Lightroom Classic: select the photos, type the keywords in the Keywording panel (for example `street, travel, black and white`), and export with Metadata set to "All Metadata" or "All Except Camera & Camera Raw Info" ("Copyright Only" drops the keywords). Keywords in a hierarchy (`Category > Street`) work too, because Lightroom exports the last part. The Title field in the Metadata panel becomes the photo's title on the site. Capture One and the Fujifilm app write keywords in the same place (XMP dc:subject or IPTC Keywords).
+| Keyword | Becomes |
+| --- | --- |
+| `Street`, `Travel`, `Street art` | A category each, labelled as written |
+| `Film` under a parent `Type` (Lightroom: Type > Film), or `type: film` | The photo's type; a new type becomes a new option in the Style filter |
+| A word from `styles.yaml`, such as `black and white` or `zwart-wit` | The photo's type, also without the parent |
+| A parent such as `Category` in Category > Street | Nothing, only `Street` counts |
+| A keyword listed under `ignore` in `content/keywords.yaml` | Nothing |
 
-Keywords, Drive folder names and `#hashtags` in a Drive description together are the photo's tags. They decide the filters:
+In Lightroom Classic: select the photos, type the keywords in the Keywording panel, and export with Metadata set to "All Metadata" or "All Except Camera & Camera Raw Info" ("Copyright Only" drops the keywords). The Title field in the Metadata panel becomes the photo's title on the site. Capture One and the Fujifilm app write keywords in the same place (XMP dc:subject or IPTC Keywords).
+
+`content/categories.yaml` and `content/styles.yaml` are optional now. They set the order and label of an option, and extra words that count as the same option: with `match: [straat]` under street, the keywords `Straat` and `Street` both land under Street instead of making two options. Options that only come from keywords follow the listed ones, alphabetically.
 
 | Field | Comes from |
 | --- | --- |
-| Categories | Every category whose id, label or `match` word appears in a tag, as whole words and without regard to case or accents. The keywords `street` and `reizen` give street and travel. No match gives Uncategorized. |
-| Style | The first style in `styles.yaml` that matches, where the default style only wins when nothing else matches. No match gives the style marked `default: true`. |
+| Categories | The keywords as above. Drive folder names and `#hashtags` in a Drive description also count, but only when they contain a listed category word (`Reizen/Lissabon 2024` gives travel). No match gives Uncategorized. |
+| Type (Style) | A Type keyword, otherwise the first matching style in `styles.yaml`, where the default only wins when nothing else matches. No match gives the style marked `default: true`. |
 | Year | The capture date in the photo's EXIF, otherwise a year in a folder name (`Scans 1998`), useful for film scans. |
 | Title | The Title stored in the file, otherwise the first line of the Drive description without hashtags, otherwise the deepest folder that says more than a category or style (`Lissabon 2024`). |
 
-`npm run check` and the import end with the keywords and folder words that match nothing, such as a typo (`stret`). Add the ones that should count to `match` in `content/categories.yaml` or `content/styles.yaml`, for example `match: [straat, straatfotografie]`.
+`npm run check` and the import list the filter options that came from keywords, so a typo (`Stret`) shows up as its own option. Fix it in the photo, add it to `match` of the right category, or add it to `ignore`.
 
 A photo already in Drive that gets keywords later has to reach the site again. With an API key or service account the import sees the change. Without one, run the workflow with "refresh" ticked (or `npm run import -- --refresh`), which downloads every photo and keeps the changed ones, or delete the file in Drive and upload the new version.
 
