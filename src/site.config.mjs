@@ -9,4 +9,6 @@ export default {
   // Drive folders that are never imported, at any depth, with everything in them.
   // Names match without regard to case.
   driveSkipFolders: ['Private'],
+  // Drive folder whose subfolders, named "<Country> - <Place>", make the Location filter.
+  locationRoot: 'Favorites',
 };

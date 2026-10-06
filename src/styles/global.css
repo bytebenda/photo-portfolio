@@ -154,10 +154,13 @@ a {
   position: absolute;
   top: 52px;
   right: 0;
-  width: 248px;
+  width: 288px;
+  max-height: min(70vh, 560px);
   z-index: 30;
   padding: 6px 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(36, 36, 40, 0.58);
@@ -176,12 +179,32 @@ a {
   }
 }
 
-.panel-actions {
+.panel-top {
   display: flex;
-  justify-content: space-between;
-  padding: 0 6px 6px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  justify-content: flex-end;
+  padding: 0 6px;
+}
+.filter-section {
+  padding: 4px 0 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 16px;
+}
+.section-title {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(235, 235, 245, 0.6);
+}
+.section-head .text-btn {
+  min-height: 36px;
+  font-size: 13px;
 }
 .text-btn {
   min-height: 44px;
@@ -227,6 +250,14 @@ a {
 }
 .option.is-empty {
   opacity: 0.4;
+}
+.option.is-country .option-label {
+  font-weight: 500;
+}
+.option.is-place {
+  padding-left: 46px;
+  min-height: 40px;
+  font-size: 14px;
 }
 
 /* Grid */
@@ -545,6 +576,7 @@ html:not(.js) .glass-btn {
     left: 12px;
     right: 12px;
     width: auto;
+    max-height: calc(100dvh - 76px);
   }
   .viewer {
     --mx: 0px;

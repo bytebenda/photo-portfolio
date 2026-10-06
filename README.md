@@ -1,6 +1,6 @@
 # Dieter photography portfolio
 
-A static photography portfolio: a square grid on black, filter pills for category, year and style, and a fullscreen photo view. Built with Astro and sharp in GitHub Actions, hosted on Vercel.
+A static photography portfolio: a square grid on black, one Filter button for location, category, year and style, and a fullscreen photo view. Built with Astro and sharp in GitHub Actions, hosted on Vercel.
 
 The photos come from Google Drive and never go into Git. They live in three places: the Drive folder, the GitHub Actions cache (private to this repository: the originals and the web images, so a run only processes new photos), and the deployed site on Vercel. `content/photos/` and `public/img/` are ignored by Git; `npm run import` fills them locally.
 
@@ -71,6 +71,15 @@ In Lightroom Classic: select the photos, type the keywords in the Keywording pan
 A photo already in Drive that gets keywords later has to reach the site again. With an API key or service account the import sees the change. Without one, run the workflow with "refresh" ticked (or `npm run import -- --refresh`), which downloads every photo and keeps the changed ones, or delete the file in Drive and upload the new version.
 
 Photos without an entry in `photos.yaml` come after the listed ones: featured photos first, then newest first. A photo is featured with a keyword or a Drive folder named in `featured` in `content/keywords.yaml` (add `favorieten` to feature the Favorieten folder), or with `featured: true` in `photos.yaml`. To give one a place in the grid, a better title, other categories or a crop centre, add an entry for its file name to `photos.yaml`. Fields you set there win; categories and style may be left out and then still come from the keywords.
+
+### Location filter
+
+The Location section of the filter comes from the subfolders of the Drive folder `Favorites` (`locationRoot` in `src/site.config.mjs`). Name each subfolder `<Country> - <Place>`; the first `-` splits country and place, so `Belgium - Pajottenland` gives Belgium > Pajottenland.
+
+- A folder with only a country (`Belgium`) puts its photos under Belgium > Other, listed last among that country's places.
+- Photos directly in `Favorites` (or outside it) go under a top-level Other.
+- Deeper subfolders don't change the location; a photo in several folders gets each location.
+- The section appears once at least one country folder exists. A country with only Other shows as one row.
 
 ## Rules the build checks
 

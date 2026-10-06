@@ -26,6 +26,8 @@ export type Photo = {
   ar: number;
   hash: string;
   featured: boolean;
+  /** Location leaves: "<country>/<place>", "<country>/other" or "other". */
+  locations: string[];
   /** Facts about the original, as stored in content/images.json. */
   source: Source;
   /** True when the original is a Git LFS pointer file and was not downloaded. */
@@ -55,6 +57,8 @@ export type Content = {
   categories: Option[];
   styles: Option[];
   years: Option<number>[];
+  /** Countries with their places, then the top-level Other; a leaf has no places. */
+  locations: (Option & { places: Option[] })[];
   tagReport: {
     unmatched: [string, number][];
     fromKeywords: { kind: 'category' | 'style'; id: string; label: string; count: number }[];
@@ -73,6 +77,11 @@ export function writeSources(photos: Photo[]): Promise<void>;
 export function lfsPointer(buf: Buffer): string | null;
 export const SIZES: { thumb: number[]; large: number[]; preview: number; og: number };
 export const UNCATEGORIZED: Option;
+export const OTHER_LOCATION: Option;
+export function locationsOf(
+  drive: Pick<DriveEntry, 'paths'> | null | undefined,
+  root?: string,
+): { id: string; country: string | null; place?: string | null }[];
 export class ContentError extends Error {
   errors: string[];
   constructor(errors: string[]);

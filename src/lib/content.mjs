@@ -7,6 +7,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import sharp from 'sharp';
 import exifr from 'exifr';
+import site from '../site.config.mjs';
 
 export const ROOT = process.cwd();
 export const CONTENT_DIR = path.join(ROOT, 'content');
@@ -195,6 +196,55 @@ function unmatchedTags(tagLists, categories, styles) {
     }
   }
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+/* Location: the subfolders of the Drive folder "Favorites" (locationRoot in
+   site.config.mjs) are named "<Country> - <Place>". A folder with only a country
+   gives "<country>/other"; a photo directly in Favorites, or outside it, gives
+   the top-level "other". Deeper subfolders don't change the location. */
+
+export const OTHER_LOCATION = { id: 'other', label: 'Other' };
+const sameName = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+
+/** The location leaves of a photo, with the labels taken from the folder names. */
+export function locationsOf(drive, root = site.locationRoot ?? 'Favorites') {
+  const found = new Map();
+  for (const p of drive?.paths ?? []) {
+    const folder = sameName(p[0], root) ? p[1] : undefined;
+    const at = folder === undefined ? -1 : folder.indexOf('-');
+    const country = (at < 0 ? folder ?? '' : folder.slice(0, at)).trim();
+    const place = at < 0 ? '' : folder.slice(at + 1).trim();
+    if (!tagSlug(country)) found.set(OTHER_LOCATION.id, { country: null });
+    else {
+      const id = `${tagSlug(country)}/${tagSlug(place) || OTHER_LOCATION.id}`;
+      if (!found.has(id)) found.set(id, { country, place: tagSlug(place) ? place : null });
+    }
+  }
+  if (!found.size) found.set(OTHER_LOCATION.id, { country: null });
+  return [...found].map(([id, v]) => ({ id, ...v }));
+}
+
+/** The location tree for the filter: countries and their places, Other last on both levels. */
+function locationTree(photoLocations) {
+  const countries = new Map();
+  let other = false;
+  for (const list of photoLocations) {
+    for (const l of list) {
+      if (!l.country) {
+        other = true;
+        continue;
+      }
+      const cid = l.id.split('/')[0];
+      if (!countries.has(cid)) countries.set(cid, { id: cid, label: l.country, places: new Map() });
+      const places = countries.get(cid).places;
+      if (!places.has(l.id)) places.set(l.id, { id: l.id, label: l.place ?? OTHER_LOCATION.label });
+    }
+  }
+  const byLabel = (a, b) => a.label.localeCompare(b.label);
+  const lastOther = (a, b) => Number(a.id.endsWith(`/${OTHER_LOCATION.id}`)) - Number(b.id.endsWith(`/${OTHER_LOCATION.id}`)) || byLabel(a, b);
+  const tree = [...countries.values()].sort(byLabel).map((c) => ({ ...c, places: [...c.places.values()].sort(lastOther) }));
+  if (other) tree.push({ ...OTHER_LOCATION, places: [] });
+  return tree;
 }
 
 const asList = (v) => (Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [v]);
@@ -569,6 +619,9 @@ export async function loadContent({ fresh = false } = {}) {
     photos.push(p);
   }
 
+  const photoLocations = photos.map((p) => locationsOf(driveByFile.get(p.file)));
+  photos.forEach((p, i) => (p.locations = photoLocations[i].map((l) => l.id)));
+
   const usedCats = new Set(photos.flatMap((p) => p.categories));
   const usedStyles = new Set(photos.map((p) => p.style));
   const years = [...new Set(photos.map((p) => p.year).filter((y) => y !== null))].sort((a, b) => b - a);
@@ -578,6 +631,7 @@ export async function loadContent({ fresh = false } = {}) {
     categories: [...categories, UNCATEGORIZED].filter((c) => usedCats.has(c.id)),
     styles: styles.filter((s) => usedStyles.has(s.id)),
     years: years.map((y) => ({ id: y, label: String(y) })),
+    locations: locationTree(photoLocations),
     tagReport: {
       unmatched: unmatchedTags(photos.map((p) => driveTags(driveByFile.get(p.file))), categories, styles),
       fromKeywords: [...fromKeywords.values()].map(({ item, kind, count }) => ({ kind, id: item.id, label: item.label, count })),

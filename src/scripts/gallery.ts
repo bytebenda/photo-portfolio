@@ -1,13 +1,14 @@
 // All interaction on the page: hiding header, scroll gap, filters, photo viewer.
 // No framework: the HTML is rendered at build time and this script enhances it.
 
-type Key = 'cat' | 'year' | 'style';
+type Key = 'loc' | 'cat' | 'year' | 'style';
 type Photo = {
   slug: string;
   title: string;
   cat: string[];
   year: string[];
   style: string[];
+  loc: string[];
   ar: number;
   focus: [number, number];
   preview: string;
@@ -29,7 +30,7 @@ root.classList.add('js');
 
 const data: Data = JSON.parse(document.getElementById('gallery-data')!.textContent || '{}');
 const photos = data.photos;
-const KEYS: Key[] = ['cat', 'year', 'style'];
+const KEYS: Key[] = ['loc', 'cat', 'year', 'style'];
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const motion = () => !reduceMotion.matches;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
@@ -114,10 +115,10 @@ window.addEventListener(
 /* Filters                                                             */
 /* ------------------------------------------------------------------ */
 
-const options: Record<Key, string[]> = { cat: [], year: [], style: [] };
+const options: Record<Key, string[]> = { loc: [], cat: [], year: [], style: [] };
 for (const g of data.groups) options[g.key] = g.options;
 
-const selected: Record<Key, Set<string>> = { cat: new Set(), year: new Set(), style: new Set() };
+const selected: Record<Key, Set<string>> = { loc: new Set(), cat: new Set(), year: new Set(), style: new Set() };
 
 function readQuery() {
   const q = new URLSearchParams(location.search);
@@ -135,14 +136,14 @@ function writeQuery() {
     if (narrowed(k)) q.set(k, options[k].filter((v) => selected[k].has(v)).join(','));
     else q.delete(k);
   }
-  const s = q.toString().replace(/%2C/g, ',');
+  const s = q.toString().replace(/%2C/g, ',').replace(/%2F/g, '/');
   history.replaceState(history.state, '', `${location.pathname}${s ? `?${s}` : ''}`);
 }
 
 const narrowed = (k: Key) => options[k].some((v) => !selected[k].has(v));
 
-// Within a pill options combine with OR, across pills with AND.
-// A pill with every option ticked lets everything through, including photos
+// Within a group options combine with OR, across groups with AND.
+// A group with every option ticked lets everything through, including photos
 // without a value for it (no year, uncategorized).
 function passes(p: Photo, except?: Key) {
   return KEYS.every((k) => k === except || !narrowed(k) || p[k].some((v) => selected[k].has(v)));
@@ -150,7 +151,11 @@ function passes(p: Photo, except?: Key) {
 
 let visible: boolean[] = photos.map(() => true);
 
-const filterEls = Array.from(document.querySelectorAll<HTMLElement>('.filter'));
+// One Filter button opens one panel with a section per group.
+const filterEl = document.querySelector<HTMLElement>('.filter')!;
+const filterPill = filterEl.querySelector<HTMLElement>('.pill')!;
+const filterCount = filterEl.querySelector<HTMLElement>('.pill-count')!;
+const sectionEls = Array.from(filterEl.querySelectorAll<HTMLElement>('.filter-section'));
 let openPanel: HTMLElement | null = null;
 
 function setPanel(filter: HTMLElement | null) {
@@ -166,22 +171,25 @@ function setPanel(filter: HTMLElement | null) {
   }
 }
 
-function renderFilterUI() {
-  for (const el of filterEls) {
-    const k = el.dataset.group as Key;
-    const pill = el.querySelector<HTMLElement>('.pill')!;
-    const count = el.querySelector<HTMLElement>('.pill-count')!;
-    const isNarrowed = narrowed(k);
-    pill.classList.toggle('is-narrowed', isNarrowed);
-    count.hidden = !isNarrowed;
-    count.textContent = String(selected[k].size);
-    pill.setAttribute('aria-label', isNarrowed ? `${pill.textContent!.trim()}, ${selected[k].size} selected` : pill.textContent!.trim());
+// The leaves (places) behind a country checkbox.
+const leavesOf = (input: HTMLInputElement) => (input.dataset.leaves ?? '').split(',').filter(Boolean);
 
+function renderFilterUI() {
+  const active = KEYS.filter((k) => options[k].length && narrowed(k)).length;
+  filterPill.classList.toggle('is-narrowed', active > 0);
+  filterCount.hidden = active === 0;
+  filterCount.textContent = String(active);
+  filterPill.setAttribute('aria-label', active ? `Filter, ${active} active` : 'Filter');
+
+  for (const el of sectionEls) {
+    const k = el.dataset.group as Key;
     el.querySelectorAll<HTMLLabelElement>('.option').forEach((label) => {
       const input = label.querySelector('input')!;
-      const v = input.value;
-      const n = photos.filter((p) => passes(p, k) && p[k].includes(v)).length;
-      input.checked = selected[k].has(v);
+      const values = input.dataset.country ? leavesOf(input) : [input.value];
+      const n = photos.filter((p) => passes(p, k) && p[k].some((v) => values.includes(v))).length;
+      const on = values.filter((v) => selected[k].has(v)).length;
+      input.checked = on === values.length;
+      input.indeterminate = on > 0 && on < values.length;
       label.classList.toggle('is-empty', n === 0);
       label.querySelector('.option-count')!.textContent = String(n);
     });
@@ -245,14 +253,17 @@ function flipGrid(next: boolean[]) {
   });
 }
 
-for (const el of filterEls) {
+filterPill.addEventListener('click', () => setPanel(openPanel === filterEl ? null : filterEl));
+
+for (const el of sectionEls) {
   const k = el.dataset.group as Key;
-  const pill = el.querySelector<HTMLButtonElement>('.pill')!;
-  pill.addEventListener('click', () => setPanel(openPanel === el ? null : el));
   el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((input) => {
     input.addEventListener('change', () => {
-      if (input.checked) selected[k].add(input.value);
-      else selected[k].delete(input.value);
+      // A country ticks or unticks all its places.
+      for (const v of input.dataset.country ? leavesOf(input) : [input.value]) {
+        if (input.checked) selected[k].add(v);
+        else selected[k].delete(v);
+      }
       applyFilters();
       writeQuery();
     });
@@ -269,11 +280,13 @@ for (const el of filterEls) {
   });
 }
 
-$<HTMLButtonElement>('reset').addEventListener('click', () => {
+function showAll() {
   for (const k of KEYS) selected[k] = new Set(options[k]);
   applyFilters();
   writeQuery();
-});
+}
+$<HTMLButtonElement>('show-all').addEventListener('click', showAll);
+$<HTMLButtonElement>('reset').addEventListener('click', showAll);
 
 document.addEventListener('click', (e) => {
   if (openPanel && !(e.target as Element).closest('.filter')) setPanel(null);

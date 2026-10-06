@@ -1,5 +1,5 @@
 ---
-// The whole page: hiding header with filter pills, the square grid, the footer
+// The whole page: hiding header with the Filter button, the square grid, the footer
 // and the photo viewer. On /photo/<slug> the viewer is rendered open.
 import { loadContent } from '../lib/content.mjs';
 import site from '../site.config.mjs';
@@ -8,12 +8,21 @@ interface Props {
   openSlug?: string;
 }
 const { openSlug } = Astro.props;
-const { photos, categories, styles, years } = await loadContent();
+const { photos, categories, styles, years, locations } = await loadContent();
 
 const srcset = (list: { w: number; url: string }[]) => list.map((s) => `${s.url} ${s.w}w`).join(', ');
 const TILE_SIZES = '(max-width: 640px) 33vw, (max-width: 1024px) 25vw, (max-width: 1799px) 20vw, 17vw';
 
-const groups = [
+// Location is nested: a country with places, or a single leaf (a country whose
+// only place is Other, or the top-level Other). Shown once a real country exists.
+type Row = { id: string; label: string; places?: { id: string; label: string }[] };
+const locationRows: Row[] = locations.map((c) =>
+  c.places.length === 0 ? { id: c.id, label: c.label } : c.places.length === 1 && c.places[0].label === 'Other' ? { id: c.places[0].id, label: c.label } : c,
+);
+const hasLocations = locations.some((c) => c.places.length > 0);
+
+const groups: { key: string; label: string; options: Row[] }[] = [
+  ...(hasLocations ? [{ key: 'loc', label: 'Location', options: locationRows }] : []),
   { key: 'cat', label: 'Categories', options: categories.map((c) => ({ id: c.id, label: c.label })) },
   { key: 'year', label: 'Year', options: years.map((y) => ({ id: String(y.id), label: y.label })) },
   { key: 'style', label: 'Style', options: styles.map((s) => ({ id: s.id, label: s.label })) },
@@ -25,6 +34,7 @@ const clientPhotos = photos.map((p) => ({
   cat: p.categories,
   year: p.year === null ? [] : [String(p.year)],
   style: p.style ? [p.style] : [],
+  loc: p.locations,
   ar: Number(p.ar.toFixed(4)),
   focus: p.focus,
   preview: p.images.preview.url,
@@ -42,7 +52,7 @@ const next = open ? photos[(openIndex + 1) % photos.length] : null;
 
 const data = {
   siteTitle: site.name,
-  groups: groups.map((g) => ({ key: g.key, options: g.options.map((o) => o.id) })),
+  groups: groups.map((g) => ({ key: g.key, options: g.options.flatMap((o) => (o.places ? o.places.map((pl) => pl.id) : [o.id])) })),
   photos: clientPhotos,
   open: open ? open.slug : null,
 };
@@ -52,30 +62,53 @@ const year = new Date().getFullYear();
 <header class="header" id="header">
   <a class="logo" href="/">{site.name}</a>
   <nav class="filters" aria-label="Filters">
-    {
-      groups.map((g) => (
-        <div class="filter" data-group={g.key}>
-          <button type="button" class="pill" aria-expanded="false" aria-controls={`panel-${g.key}`} id={`pill-${g.key}`}>
-            <span>{g.label}</span>
-            <span class="pill-count" hidden />
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.5l3 3 3-3" /></svg>
-          </button>
-          <div class="panel" id={`panel-${g.key}`} role="group" aria-labelledby={`pill-${g.key}`} hidden>
-            <div class="panel-actions">
-              <button type="button" class="text-btn" data-action="all">Select all</button>
-              <button type="button" class="text-btn" data-action="clear">Clear</button>
-            </div>
-            {g.options.map((o) => (
-              <label class="option">
-                <input type="checkbox" value={o.id} checked />
-                <span class="option-label">{o.label}</span>
-                <span class="option-count" />
-              </label>
-            ))}
-          </div>
+    <div class="filter">
+      <button type="button" class="pill" aria-expanded="false" aria-controls="panel-filter" id="pill-filter">
+        <span>Filter</span>
+        <span class="pill-count" hidden />
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.5l3 3 3-3" /></svg>
+      </button>
+      <div class="panel" id="panel-filter" role="group" aria-labelledby="pill-filter" hidden>
+        <div class="panel-top">
+          <button type="button" class="text-btn" id="show-all">Show all</button>
         </div>
-      ))
-    }
+        {
+          groups.map((g) => (
+            <section class="filter-section" data-group={g.key} aria-label={g.label}>
+              <div class="section-head">
+                <h2 class="section-title">{g.label}</h2>
+                <button type="button" class="text-btn" data-action="all">Select all</button>
+                <button type="button" class="text-btn" data-action="clear">Clear</button>
+              </div>
+              {g.options.map((o) =>
+                o.places ? (
+                  <Fragment>
+                    <label class="option is-country">
+                      <input type="checkbox" data-country={o.id} data-leaves={o.places.map((pl) => pl.id).join(',')} checked />
+                      <span class="option-label">{o.label}</span>
+                      <span class="option-count" />
+                    </label>
+                    {o.places.map((pl) => (
+                      <label class="option is-place">
+                        <input type="checkbox" value={pl.id} checked />
+                        <span class="option-label">{pl.label}</span>
+                        <span class="option-count" />
+                      </label>
+                    ))}
+                  </Fragment>
+                ) : (
+                  <label class="option">
+                    <input type="checkbox" value={o.id} checked />
+                    <span class="option-label">{o.label}</span>
+                    <span class="option-count" />
+                  </label>
+                ),
+              )}
+            </section>
+          ))
+        }
+      </div>
+    </div>
   </nav>
 </header>
 
