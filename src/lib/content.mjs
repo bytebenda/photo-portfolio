@@ -218,7 +218,7 @@ export async function loadContent({ fresh = false } = {}) {
   for (const d of draft) {
     const head = (await readFile(path.join(PHOTOS_DIR, d.file))).subarray(0, 40).toString('latin1');
     if (head.startsWith('version https://git-lfs')) {
-      errors.push(`${d.file} is a Git LFS pointer, not an image: run "git lfs pull", or turn on Git LFS in the Vercel project settings`);
+      errors.push(`${d.file} is a Git LFS pointer, not an image: run "git lfs pull" or "node scripts/lfs-fetch.mjs"`);
     }
   }
 

@@ -41,6 +41,7 @@ A new category or style is one extra entry in `content/categories.yaml` or `cont
 | `npm run build` | Make images, then build the static site into `dist/` |
 | `npm run preview` | Serve the built site |
 | `npm run check` | Validate `content/` without building |
+| `node scripts/lfs-fetch.mjs` | Replace Git LFS pointer files with the real photos (runs before every build) |
 | `npm run typecheck` | Type check the Astro pages and scripts |
 | `npm run samples` | Regenerate the sample photos |
 
@@ -55,7 +56,7 @@ A new category or style is one extra entry in `content/categories.yaml` or `cont
 ## Deploying on Vercel
 
 1. Import this repository in Vercel. The framework preset is Astro and the build command is `npm run build`.
-2. In the project settings under Git, turn on Git LFS. Without it Vercel gets pointer files instead of photos and the build fails.
+2. Optional: in the project settings under Git, turn on Git LFS. When it is off, Vercel clones the photos as Git LFS pointer files and `scripts/lfs-fetch.mjs` downloads the real files from GitHub at the start of the build. That works for a public repository; a private one needs a `GITHUB_TOKEN` environment variable with read access to the repository contents.
 3. Set `SITE_URL` (for example `https://example.com`) once the domain is known, so link previews use the right address. Without it the Vercel production URL is used.
 
 Git LFS storage and bandwidth count against the GitHub quota, and every Vercel build downloads the originals. Check the quota before pushing the full set.
