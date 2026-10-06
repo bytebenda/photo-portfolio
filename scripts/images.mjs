@@ -2,12 +2,16 @@
 // square thumbnails (400, 800), large versions (1600, 3000 on the long edge)
 // in AVIF and WebP, a small preview WebP and a JPEG for link previews.
 // Files are named after the slug and a hash of the original, so unchanged
-// photos are skipped and old versions are removed.
+// photos are skipped and old versions are removed. The images are committed, so a
+// build only makes the ones that are missing; for those it downloads the original
+// when it is a Git LFS pointer. Afterwards content/images.json is updated with
+// what the build needs from each original.
 import { mkdir, readdir, unlink, access } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
-import { loadContent, ContentError, IMG_OUT_DIR } from '../src/lib/content.mjs';
+import { loadContent, writeSources, ContentError, IMG_OUT_DIR } from '../src/lib/content.mjs';
+import { findPointers, fetchPointers, fetchNeeded } from './lfs-fetch.mjs';
 
 const exists = (f) => access(f).then(() => true, () => false);
 
@@ -48,19 +52,28 @@ async function runPool(tasks, size) {
 }
 
 try {
+  await fetchNeeded();
   const { photos, warnings } = await loadContent();
   for (const w of warnings) console.warn(`warning: ${w}`);
   await mkdir(IMG_OUT_DIR, { recursive: true });
 
   const wanted = new Set();
   const todo = [];
+  const needOriginal = new Set();
   for (const p of photos) {
-    for (const job of jobsFor(p)) {
+    const jobs = jobsFor(p);
+    p.outputs = jobs.map((j) => j.name);
+    for (const job of jobs) {
       wanted.add(job.name);
       const out = path.join(IMG_OUT_DIR, job.name);
-      if (!(await exists(out))) todo.push(() => job.run().toFile(out));
+      if (!(await exists(out))) {
+        todo.push(() => job.run().toFile(out));
+        if (p.pointer) needOriginal.add(p.file);
+      }
     }
   }
+  // Originals that are Git LFS pointers but have images to make: download them.
+  if (needOriginal.size) await fetchPointers((await findPointers()).filter((ptr) => needOriginal.has(ptr.file)));
 
   let removed = 0;
   for (const f of await readdir(IMG_OUT_DIR)) {
@@ -73,6 +86,7 @@ try {
   const t0 = Date.now();
   sharp.concurrency(1);
   await runPool(todo, Math.max(1, Math.min(os.cpus().length, 8)));
+  await writeSources(photos);
   console.log(`images: ${photos.length} photos, ${todo.length} files made, ${wanted.size - todo.length} up to date, ${removed} removed (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 } catch (e) {
   console.error(e instanceof ContentError ? e.message : e);

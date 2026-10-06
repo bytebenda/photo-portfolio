@@ -14,6 +14,8 @@ type Photo = {
   avif: string;
   webp: string;
   fallback: string;
+  camera: string | null;
+  lens: string | null;
 };
 type Data = {
   siteTitle: string;
@@ -289,6 +291,10 @@ const stageFull = $<HTMLImageElement>('stage-full');
 const btnClose = $<HTMLAnchorElement>('viewer-close');
 const btnPrev = $<HTMLAnchorElement>('viewer-prev');
 const btnNext = $<HTMLAnchorElement>('viewer-next');
+const btnInfo = $<HTMLButtonElement>('viewer-info');
+const infoPanel = $<HTMLElement>('info-panel');
+const infoCamera = $<HTMLElement>('info-camera');
+const infoLens = $<HTMLElement>('info-lens');
 
 let current: number | null = null;
 let controlsTimer = 0;
@@ -302,7 +308,33 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function showControls() {
   viewer.classList.add('controls-on');
   window.clearTimeout(controlsTimer);
+  // While the details are open the controls stay visible.
+  if (infoOpen) return;
   controlsTimer = window.setTimeout(() => viewer.classList.remove('controls-on'), 2000);
+}
+
+/* Photo details: camera and lens behind the (i) button. */
+let infoOpen = false;
+// Rendered open for visitors without JavaScript; with it, the panel starts closed.
+infoPanel.hidden = true;
+
+function setInfo(open: boolean) {
+  infoOpen = open && !btnInfo.hidden;
+  infoPanel.hidden = !infoOpen;
+  btnInfo.setAttribute('aria-expanded', String(infoOpen));
+  showControls();
+}
+
+function fillInfo(p: Photo) {
+  const row = (el: HTMLElement, value: string | null) => {
+    el.hidden = !value;
+    el.querySelector('dd')!.textContent = value ?? '';
+  };
+  row(infoCamera, p.camera);
+  row(infoLens, p.lens);
+  btnInfo.hidden = !p.camera && !p.lens;
+  if (btnInfo.hidden && infoOpen) setInfo(false);
+  else infoPanel.hidden = !infoOpen;
 }
 
 function preloadPreview(i: number) {
@@ -354,6 +386,7 @@ function setStagePhoto(i: number) {
   stageFull.src = p.fallback;
   stageFull.alt = p.title;
   viewer.setAttribute('aria-label', p.title);
+  fillInfo(p);
   btnPrev.href = photoPath(photos[neighbour(i, -1)]);
   btnNext.href = photoPath(photos[neighbour(i, 1)]);
   btnClose.href = `/${location.search}`;
@@ -445,6 +478,7 @@ async function closeViewer({ fromHistory = false } = {}) {
     animating = false;
   }
   viewer.hidden = true;
+  setInfo(false);
   root.classList.remove('viewer-open');
   current = null;
   document.title = data.siteTitle;
@@ -490,6 +524,8 @@ btnPrev.addEventListener('click', (e) => {
   go(-1);
   showControls();
 });
+btnInfo.addEventListener('click', () => setInfo(!infoOpen));
+
 btnNext.addEventListener('click', (e) => {
   e.preventDefault();
   go(1);
@@ -523,12 +559,15 @@ viewer.addEventListener('touchend', (e) => {
 
 document.addEventListener('keydown', (e) => {
   if (current !== null) {
-    if (e.key === 'Escape') closeViewer();
+    if (e.key === 'Escape') {
+      if (infoOpen) setInfo(false);
+      else closeViewer();
+    } else if (e.key === 'i' && !e.metaKey && !e.ctrlKey && !e.altKey) setInfo(!infoOpen);
     else if (e.key === 'ArrowRight') go(1);
     else if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === 'Tab') {
       // Keep focus inside the viewer.
-      const items = [btnClose, btnPrev, btnNext];
+      const items: HTMLElement[] = [btnClose, btnPrev, btnNext, ...(btnInfo.hidden ? [] : [btnInfo])];
       const at = items.indexOf(document.activeElement as HTMLAnchorElement);
       e.preventDefault();
       items[(at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
