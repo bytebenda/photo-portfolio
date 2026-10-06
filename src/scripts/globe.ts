@@ -7,6 +7,9 @@
 // World units are CSS pixels: the camera is placed so the z = 0 plane maps one
 // unit to one pixel, with the origin at the centre of the viewport and y up.
 import {
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
   CanvasTexture,
   DoubleSide,
   InstancedBufferAttribute,
@@ -16,6 +19,7 @@ import {
   Mesh,
   PerspectiveCamera,
   PlaneGeometry,
+  Points,
   Scene,
   ShaderMaterial,
   Vector2,
@@ -33,6 +37,13 @@ export type Frame = {
   intro: number; // fade-in after loading, 0 to 1
   centerY: number; // globe centre offset in pixels (below the header)
   bloom: number; // glow strength, desktop only
+  // Pose for the drop-in on load: vertical offset in pixels and squash/stretch.
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+  dt: number; // seconds since the last frame, for the sparkles
+  spinRate: number; // spin speed in rad/s, signed; sparkles fly off with it
+  sparkle: number; // sparkles to emit per second
 };
 
 const FOV = 30;
@@ -195,6 +206,42 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
+// Glitter: small additive stars that fly off the spinning surface, drift down and
+// twinkle out. Positions are simulated on the CPU; a few hundred is plenty.
+const MAX_SPARKS = 480;
+
+const sparkVertex = /* glsl */ `
+  attribute vec3 aInfo;   // size in pixels, alpha, seed
+  uniform float uDpr;
+  uniform float uCamZ;
+  uniform float uTime;
+  varying float vAlpha;
+  varying float vSeed;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float twinkle = 0.6 + 0.4 * sin(uTime * 17.0 + aInfo.z * 47.0);
+    gl_PointSize = aInfo.x * uDpr * uCamZ / max(1.0, -mv.z) * twinkle;
+    vAlpha = aInfo.y * twinkle;
+    vSeed = aInfo.z;
+  }
+`;
+
+const sparkFragment = /* glsl */ `
+  varying float vAlpha;
+  varying float vSeed;
+  void main() {
+    vec2 c = gl_PointCoord * 2.0 - 1.0;
+    float core = exp(-dot(c, c) * 7.0) * 1.3;
+    float rays = max(0.0, 1.0 - abs(c.x) * 7.0) * max(0.0, 1.0 - abs(c.y))
+               + max(0.0, 1.0 - abs(c.y) * 7.0) * max(0.0, 1.0 - abs(c.x));
+    float a = (core + rays * 0.7) * vAlpha;
+    if (a < 0.01) discard;
+    vec3 col = mix(vec3(1.0, 0.9, 0.7), vec3(0.85, 0.92, 1.0), fract(vSeed * 7.31));
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
 async function loadAtlas(urls: string[], cell: number) {
   const n = urls.length;
   const cols = Math.ceil(Math.sqrt(n));
@@ -315,6 +362,34 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   mesh.frustumCulled = false;
   scene.add(mesh);
 
+  const sparkPos = new Float32Array(MAX_SPARKS * 3);
+  const sparkInfo = new Float32Array(MAX_SPARKS * 3);
+  const sparkVel = new Float32Array(MAX_SPARKS * 3);
+  const sparkAge = new Float32Array(MAX_SPARKS).fill(1);
+  const sparkLife = new Float32Array(MAX_SPARKS).fill(1);
+  const sparkSize = new Float32Array(MAX_SPARKS);
+  const sparkGeometry = new BufferGeometry();
+  const sparkPosAttr = new BufferAttribute(sparkPos, 3);
+  const sparkInfoAttr = new BufferAttribute(sparkInfo, 3);
+  sparkGeometry.setAttribute('position', sparkPosAttr);
+  sparkGeometry.setAttribute('aInfo', sparkInfoAttr);
+  const sparkUniforms = { uDpr: { value: 1 }, uCamZ: { value: 1000 }, uTime: { value: 0 } };
+  const sparkMaterial = new ShaderMaterial({
+    vertexShader: sparkVertex,
+    fragmentShader: sparkFragment,
+    uniforms: sparkUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  });
+  const sparks = new Points(sparkGeometry, sparkMaterial);
+  sparks.frustumCulled = false;
+  scene.add(sparks);
+  let sparkNext = 0;
+  let sparkDebt = 0;
+  let sparksAlive = 0;
+  let clock = 0;
+
   // PlaneGeometry uv has v = 1 at the top; the atlas is not flipped, so flip v here.
   const uv = geometry.getAttribute('uv');
   for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
@@ -357,6 +432,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     camera.position.set(0, 0, h / 2 / Math.tan((FOV * Math.PI) / 360));
     camera.far = camera.position.z * 4;
     camera.updateProjectionMatrix();
+    sparkUniforms.uDpr.value = Math.min(window.devicePixelRatio || 1, 2);
+    sparkUniforms.uCamZ.value = camera.position.z;
     // The globe fills the space below the header; tiles cover it with small gaps.
     const r = Math.min(w, h - 64) * 0.45;
     uniforms.uR.value = r;
@@ -405,6 +482,9 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uniforms.uIntro.value = f.intro;
     uniforms.uCenterY.value = f.centerY;
     mesh.rotation.set(f.tiltX, f.tiltY, 0);
+    mesh.position.set(0, f.offsetY, 0);
+    mesh.scale.set(f.scaleX, f.scaleY, 1);
+    stepSparks(f);
     if (bloom && f.bloom > 0.004) {
       bloom.pass.strength = f.bloom;
       bloom.composer.render();
@@ -413,14 +493,74 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     }
   }
 
+  // Sparks start on the visible side of the globe and leave along the spin
+  // (the surface velocity), a little outward, then fall and fade.
+  function stepSparks(f: Frame) {
+    const dt = Math.min(f.dt, 0.05);
+    clock += dt;
+    sparkUniforms.uTime.value = clock;
+    const r = uniforms.uR.value;
+    const cy = uniforms.uCenterY.value + f.offsetY;
+    sparkDebt = Math.min(sparkDebt + f.sparkle * dt, 60);
+    while (sparkDebt >= 1) {
+      sparkDebt -= 1;
+      const i = sparkNext;
+      sparkNext = (sparkNext + 1) % MAX_SPARKS;
+      const u = Math.random() * 2 - 1;
+      const a = Math.random() * Math.PI * 2;
+      const ring = Math.sqrt(1 - u * u);
+      const nx = ring * Math.cos(a);
+      const ny = u;
+      const nz = Math.abs(ring * Math.sin(a)) * 0.9 + 0.1; // the side facing the viewer
+      const out = 40 + Math.random() * 90;
+      sparkPos.set([nx * r * 1.02, cy + ny * r * 1.02, nz * r * 1.02], i * 3);
+      sparkVel.set(
+        [
+          f.spinRate * nz * r * 0.55 + nx * out + (Math.random() - 0.5) * 40,
+          ny * out + (Math.random() - 0.3) * 50,
+          -f.spinRate * nx * r * 0.55 + nz * out * 0.5,
+        ],
+        i * 3,
+      );
+      sparkAge[i] = 0;
+      sparkLife[i] = 0.7 + Math.random() * 1.0;
+      sparkSize[i] = 12 + Math.random() * 20;
+      sparkInfo[i * 3 + 2] = Math.random();
+    }
+    sparksAlive = 0;
+    const drag = Math.exp(-dt * 0.9);
+    for (let i = 0; i < MAX_SPARKS; i++) {
+      if (sparkAge[i] >= sparkLife[i]) {
+        sparkInfo[i * 3 + 1] = 0;
+        continue;
+      }
+      sparksAlive++;
+      sparkAge[i] += dt;
+      const k = i * 3;
+      sparkVel[k] *= drag;
+      sparkVel[k + 1] = sparkVel[k + 1] * drag - 140 * dt; // a little gravity
+      sparkVel[k + 2] *= drag;
+      sparkPos[k] += sparkVel[k] * dt;
+      sparkPos[k + 1] += sparkVel[k + 1] * dt;
+      sparkPos[k + 2] += sparkVel[k + 2] * dt;
+      const t = sparkAge[i] / sparkLife[i];
+      sparkInfo[k] = sparkSize[i] * (1 - t * 0.5);
+      sparkInfo[k + 1] = Math.min(1, t / 0.12) * (1 - t) * (1 - t);
+    }
+    sparkPosAttr.needsUpdate = true;
+    sparkInfoAttr.needsUpdate = true;
+  }
+
   function dispose() {
+    sparkGeometry.dispose();
+    sparkMaterial.dispose();
     geometry.dispose();
     material.dispose();
     atlas.texture.dispose();
     renderer.dispose();
   }
 
-  return { resize, pickPrimaries, setTargets, render, dispose, renderer };
+  return { resize, pickPrimaries, setTargets, render, dispose, renderer, sparksAlive: () => sparksAlive };
 }
 
 export type Globe = Awaited<ReturnType<typeof createGlobe>>;

@@ -37,6 +37,7 @@ function start() {
   let tiltTarget = { x: 0, y: 0 };
   let intro = 0;
   let readyAt = 0;
+  let lastRot = 0; // for the spin speed that drives the sparkles
   let shown = 0; // progress drawn, following the scroll progress through a spring
   let shownV = 0;
   let slow = 0; // count of slow frames while the glow is on
@@ -45,6 +46,43 @@ function start() {
   const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
   const progress = () => (heroH > 0 ? clamp(window.scrollY / heroH) : 1);
   const smooth = (t: number) => t * t * (3 - 2 * t);
+  const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  // Drop-in on load: the globe falls in from above, squashes on impact, bounces
+  // high while spinning three times, lands with a small second bounce and settles
+  // into the slow spin. Times in seconds from the moment the globe is ready.
+  const FALL = 0.65;
+  const HOP = 1.3;
+  const HOP2 = 0.42;
+  const INTRO = FALL + HOP + HOP2 + 0.25;
+  function introPose(t: number, h: number, r: number) {
+    const pose = { y: 0, sx: 1, sy: 1, spin: 0 };
+    const squash = (at: number, amount: number) => {
+      const k = Math.max(0, 1 - Math.abs(t - at) / 0.11);
+      pose.sy -= amount * k;
+      pose.sx += amount * 0.6 * k;
+    };
+    if (t < FALL) {
+      const s = t / FALL;
+      pose.y = (h / 2 + r + 40) * (1 - s * s); // falling, speeding up
+      pose.sy += 0.06 * s * s; // stretched by the speed
+      pose.sx -= 0.03 * s * s;
+    } else if (t < FALL + HOP) {
+      const s = (t - FALL) / HOP;
+      pose.y = h * 0.2 * 4 * s * (1 - s);
+      pose.spin = 6 * Math.PI * easeInOut(s); // three turns in the air
+    } else if (t < FALL + HOP + HOP2) {
+      const s = (t - FALL - HOP) / HOP2;
+      pose.y = h * 0.045 * 4 * s * (1 - s);
+      pose.spin = 6 * Math.PI;
+    } else {
+      pose.spin = 6 * Math.PI;
+    }
+    squash(FALL, 0.14);
+    squash(FALL + HOP, 0.08);
+    squash(FALL + HOP + HOP2, 0.03);
+    return pose;
+  }
 
   // Back to the plain gallery, keeping what is on screen in place.
   function stop() {
@@ -108,7 +146,13 @@ function start() {
     const moving = !still();
     const d = clamp(shown);
 
-    intro = moving ? clamp((now - readyAt) / 900) : 1;
+    const introT = moving ? (now - readyAt) / 1000 : INTRO;
+    intro = clamp(introT / INTRO);
+    const w = canvas.clientWidth || window.innerWidth;
+    const h = canvas.clientHeight || window.innerHeight;
+    const pose = introPose(introT, h, Math.min(w, h - 64) * 0.45);
+    // Scrolling during the drop-in takes the globe straight to rest.
+    const rest = 1 - smooth(clamp(d / 0.08));
 
     // Slow spin plus drag momentum; both stop while the globe unrolls, so the
     // seam stays at the back. Reduce Motion keeps only what follows the
@@ -122,7 +166,14 @@ function start() {
     tilt.y += (tiltTarget.y - tilt.y) * Math.min(1, dt * 4);
     const lean = 1 - smooth(clamp(d / 0.5));
 
-    if (d < 0.2) globe.pickPrimaries(rot);
+    const shownRot = rot + pose.spin;
+    const spinRate = dt > 0 ? (shownRot - lastRot) / dt : 0;
+    lastRot = shownRot;
+    // Glitter when the globe turns faster than its slow spin: a swipe, the
+    // momentum after it, or the three turns of the drop-in.
+    const sparkle = moving && d < 0.1 ? Math.min(340, Math.max(0, Math.abs(spinRate) - SPIN * 3) * 70) * (1 - d * 10) : 0;
+
+    if (d < 0.2) globe.pickPrimaries(shownRot);
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
 
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
@@ -138,16 +189,22 @@ function start() {
     globe.render({
       p: d,
       vel: Math.abs(shownV),
-      rot,
+      rot: shownRot,
       tiltX: tilt.x * lean,
       tiltY: tilt.y * lean,
-      intro: smooth(intro),
+      intro: 1,
       centerY: -32,
       bloom,
+      offsetY: pose.y * rest,
+      scaleX: 1 + (pose.sx - 1) * rest,
+      scaleY: 1 + (pose.sy - 1) * rest,
+      dt,
+      spinRate,
+      sparkle,
     });
 
     const busy = moving && Math.min(p, shown) < 1 && !document.hidden;
-    if (busy || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
+    if (busy || springing || dragging || intro < 1 || globe.sparksAlive() > 0) raf = requestAnimationFrame(tick);
   }
 
   // A grid square in viewport pixels, and when its photo leaves: by distance
