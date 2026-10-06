@@ -14,9 +14,12 @@ export type Photo = {
   style: string | null;
   year: number | null;
   focus: [number, number];
-  unlisted?: boolean;
-  /** Set for photos imported from Google Drive: the file ID and the tags from its folders. */
-  drive?: { id: string; tags: string[] };
+  /** Keywords stored in the file (XMP dc:subject, IPTC Keywords). */
+  keywords: string[];
+  /** Keywords plus Drive folder names and hashtags, as slugs; they decide categories and style. */
+  tags: string[];
+  /** Set for photos imported from Google Drive. */
+  drive?: { id: string };
   abs: string;
   width: number;
   height: number;
@@ -50,9 +53,9 @@ export class ContentError extends Error {
 }
 export function slugify(s: string): string;
 export function imageSet(p: Pick<Photo, 'slug' | 'hash' | 'width' | 'height'>): ImageSet;
-export function driveTags(d: Pick<DriveEntry, 'paths' | 'description'>): string[];
-export function fromDrive(
-  d: DriveEntry,
+export function driveTags(d: Pick<DriveEntry, 'paths' | 'description'> | null | undefined): string[];
+export function fromTags(
+  source: { keywords?: string[]; drive?: DriveEntry | null },
   categories: ListItem[],
   styles: ListItem[],
 ): { tags: string[]; categories: string[]; style: string | null; year: number | null; title: string | null };
