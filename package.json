@@ -4,16 +4,16 @@
   "type": "module",
   "version": "0.1.0",
   "scripts": {
-    "check": "node scripts/check.mjs",
+    "check": "node scripts/lfs-fetch.mjs && node scripts/check.mjs",
     "images": "node scripts/images.mjs",
-    "dev": "node scripts/images.mjs && astro dev",
-    "build": "node scripts/images.mjs && astro build",
+    "dev": "node scripts/lfs-fetch.mjs && node scripts/images.mjs && astro dev",
+    "build": "node scripts/lfs-fetch.mjs && node scripts/images.mjs && astro build",
     "preview": "astro preview",
     "samples": "node scripts/make-samples.mjs",
     "typecheck": "astro check"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "dependencies": {
     "astro": "^7.3.5",
@@ -25,5 +25,9 @@
     "@astrojs/check": "^0.9.10",
     "@types/node": "^26.6.4",
     "typescript": "^6.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bytebenda/photo-portfolio.git"
   }
 }
