@@ -14,6 +14,10 @@
 //   nothing                 the folder is shared as "anyone with the link": the
 //                           script reads Drive's public folder pages instead of the API
 //
+// Folders named in driveSkipFolders in src/site.config.mjs ("Private" by default)
+// are never imported, at any depth, with everything in them; photos imported from
+// them before are removed.
+//
 // Unchanged files are skipped, files that were removed from Drive are removed
 // from content/photos/. With an API key or service account a file changed in
 // Drive is downloaded again (Drive's MD5 checksum); without one only with
@@ -181,9 +185,13 @@ async function listChildren(drive, folderId) {
 
 // Every image under the root folder, with the folder path it was found in.
 // A shortcut counts as the file or folder it points to.
+const SKIP_FOLDERS = new Set((site.driveSkipFolders ?? ['Private']).map((n) => String(n).trim().toLowerCase()));
+const isSkippedFolder = (name) => SKIP_FOLDERS.has(String(name ?? '').trim().toLowerCase());
+
 async function walk(listChildren, drive, rootId) {
   const images = new Map();
   const skipped = [];
+  const skippedFolders = [];
   const seenFolders = new Set([rootId]);
   const queue = [{ id: rootId, path: [] }];
   while (queue.length) {
@@ -193,10 +201,21 @@ async function walk(listChildren, drive, rootId) {
         const target = f.shortcutDetails?.targetId;
         if (!target) continue;
         const resolved = await drive(`files/${target}`, { fields: FILE_FIELDS });
+        // A shortcut to a skipped folder is skipped too, whatever the shortcut is called.
+        if (resolved.mimeType === FOLDER_MIME && isSkippedFolder(resolved.name)) {
+          skippedFolders.push([...folder.path, f.name].join('/'));
+          continue;
+        }
         // A folder shortcut keeps the name it has in this folder; a file keeps its own name and extension.
         f = resolved.mimeType === FOLDER_MIME ? { ...resolved, name: f.name } : resolved;
       }
       if (f.mimeType === FOLDER_MIME) {
+        if (isSkippedFolder(f.name)) {
+          // Never imported, nor anything below it.
+          seenFolders.add(f.id);
+          skippedFolders.push([...folder.path, f.name].join('/'));
+          continue;
+        }
         if (seenFolders.has(f.id)) continue;
         seenFolders.add(f.id);
         queue.push({ id: f.id, path: [...folder.path, f.name] });
@@ -209,7 +228,7 @@ async function walk(listChildren, drive, rootId) {
       }
     }
   }
-  return { images: [...images.values()], skipped };
+  return { images: [...images.values()], skipped, skippedFolders };
 }
 
 /* ------------------------------------------------------------------ */
@@ -238,7 +257,7 @@ const drive = LINK_MODE ? null : await makeClient();
 const root = folderId();
 if (LINK_MODE && process.env.GOOGLE_API_KEY) console.warn('drive-import: GOOGLE_API_KEY holds no API key (keys start with "AIza"), reading the folder as a shared link');
 console.log(`drive-import: reading folder ${root} and all its subfolders${LINK_MODE ? ' through its shared link' : ''}`);
-const { images, skipped } = await walk(LINK_MODE ? listPublic : (id) => listChildren(drive, id), drive, root);
+const { images, skipped, skippedFolders } = await walk(LINK_MODE ? listPublic : (id) => listChildren(drive, id), drive, root);
 const fetchFile = (d) => (LINK_MODE ? downloadPublic(d.id, d.file) : drive(`files/${d.id}`, { alt: 'media' }, { raw: true }));
 
 const previous = await readManifest();
@@ -355,6 +374,7 @@ console.log(
   `drive-import: ${byContent.size} photos in Drive, ${added} new, ${downloads.length - added} updated, ${removed.length} removed${DRY_RUN ? ' (dry run, nothing written)' : ''}`,
 );
 if (images.length > byContent.size) console.log(`drive-import: ${images.length - byContent.size} duplicates in other folders, imported once`);
+for (const f of skippedFolders) console.log(`drive-import: skipped folder ${f} and everything in it (driveSkipFolders)`);
 for (const s of skipped) console.warn(`warning: skipped ${s}: only JPEG, PNG, WebP, TIFF and AVIF can be used (export HEIC or RAW as JPEG)`);
 
 // Report how the folder names were understood, so missing "match" words are easy to spot.

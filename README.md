@@ -29,6 +29,7 @@ A new category or style is one extra entry in `content/categories.yaml` or `cont
 
 - Unchanged photos are skipped, photos changed in Drive are downloaded again, and photos removed from Drive are removed from `content/photos/`. Photos you copied into `content/photos/` yourself are left alone.
 - A photo that sits in several folders, or a shortcut to a photo or folder, is imported once and gets the tags of every folder it is in.
+- A folder named `Private` is never imported, at any depth, with everything in it, also when reached through a shortcut. Photos imported from it before are removed. The names are in `driveSkipFolders` in `src/site.config.mjs`.
 - JPEG, PNG, WebP, TIFF and AVIF are imported. HEIC and camera RAW files are skipped with a warning: export them as JPEG in Drive.
 - `node scripts/drive-import.mjs --dry-run` shows what would change without writing anything.
 
