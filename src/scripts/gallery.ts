@@ -17,6 +17,7 @@ type Photo = {
   fallback: string;
   camera: string | null;
   lens: string | null;
+  place: string | null;
 };
 type Data = {
   siteTitle: string;
@@ -286,6 +287,11 @@ function showAll() {
   writeQuery();
 }
 $<HTMLButtonElement>('show-all').addEventListener('click', showAll);
+$<HTMLButtonElement>('deselect-all').addEventListener('click', () => {
+  for (const k of KEYS) selected[k] = new Set();
+  applyFilters();
+  writeQuery();
+});
 $<HTMLButtonElement>('reset').addEventListener('click', showAll);
 
 document.addEventListener('click', (e) => {
@@ -306,6 +312,7 @@ const btnPrev = $<HTMLAnchorElement>('viewer-prev');
 const btnNext = $<HTMLAnchorElement>('viewer-next');
 const btnInfo = $<HTMLButtonElement>('viewer-info');
 const infoPanel = $<HTMLElement>('info-panel');
+const infoPlace = $<HTMLElement>('info-place');
 const infoCamera = $<HTMLElement>('info-camera');
 const infoLens = $<HTMLElement>('info-lens');
 
@@ -326,7 +333,7 @@ function showControls() {
   controlsTimer = window.setTimeout(() => viewer.classList.remove('controls-on'), 2000);
 }
 
-/* Photo details: camera and lens behind the (i) button. */
+/* Photo details: location, camera and lens behind the (i) button. */
 let infoOpen = false;
 // Rendered open for visitors without JavaScript; with it, the panel starts closed.
 infoPanel.hidden = true;
@@ -343,9 +350,10 @@ function fillInfo(p: Photo) {
     el.hidden = !value;
     el.querySelector('dd')!.textContent = value ?? '';
   };
+  row(infoPlace, p.place);
   row(infoCamera, p.camera);
   row(infoLens, p.lens);
-  btnInfo.hidden = !p.camera && !p.lens;
+  btnInfo.hidden = !p.place && !p.camera && !p.lens;
   if (btnInfo.hidden && infoOpen) setInfo(false);
   else infoPanel.hidden = !infoOpen;
 }

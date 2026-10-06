@@ -181,7 +181,7 @@ a {
 
 .panel-top {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 0 6px;
 }
 .filter-section {

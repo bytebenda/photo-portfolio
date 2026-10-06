@@ -28,6 +28,12 @@ const groups: { key: string; label: string; options: Row[] }[] = [
   { key: 'style', label: 'Style', options: styles.map((s) => ({ id: s.id, label: s.label })) },
 ];
 
+// Location text for the viewer details: "Pajottenland, Belgium", or just the
+// country for its Other. Photos outside a country folder have none.
+const placeNames = new Map<string, string>();
+for (const c of locations) for (const pl of c.places) placeNames.set(pl.id, pl.label === 'Other' ? c.label : `${pl.label}, ${c.label}`);
+const placeOf = (p: (typeof photos)[number]) => p.locations.map((id) => placeNames.get(id)).filter(Boolean).join('; ') || null;
+
 const clientPhotos = photos.map((p) => ({
   slug: p.slug,
   title: p.title,
@@ -43,12 +49,15 @@ const clientPhotos = photos.map((p) => ({
   fallback: p.images.large.webp[0].url,
   camera: p.source.camera ?? null,
   lens: p.source.lens ?? null,
+  place: placeOf(p),
 }));
 
 const openIndex = openSlug ? photos.findIndex((p) => p.slug === openSlug) : -1;
 const open = openIndex >= 0 ? photos[openIndex] : null;
 const prev = open ? photos[(openIndex - 1 + photos.length) % photos.length] : null;
 const next = open ? photos[(openIndex + 1) % photos.length] : null;
+const openPlace = open ? placeOf(open) : null;
+const hasInfo = !!open && !!(openPlace || open.source.camera || open.source.lens);
 
 const data = {
   siteTitle: site.name,
@@ -70,6 +79,7 @@ const year = new Date().getFullYear();
       </button>
       <div class="panel" id="panel-filter" role="group" aria-labelledby="pill-filter" hidden>
         <div class="panel-top">
+          <button type="button" class="text-btn" id="deselect-all">Deselect all</button>
           <button type="button" class="text-btn" id="show-all">Show all</button>
         </div>
         {
@@ -188,12 +198,16 @@ const year = new Date().getFullYear();
     aria-label="Photo details"
     aria-expanded="false"
     aria-controls="info-panel"
-    hidden={open ? !open.source.camera && !open.source.lens : false}
+    hidden={open ? !hasInfo : false}
   >
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5" /><path d="M10 9v5" /><circle cx="10" cy="6.2" r="0.6" fill="currentColor" stroke="none" /></svg>
   </button>
-  <div class="info-panel" id="info-panel" role="region" aria-label="Photo details" hidden={!open || (!open.source.camera && !open.source.lens)}>
+  <div class="info-panel" id="info-panel" role="region" aria-label="Photo details" hidden={!hasInfo}>
     <dl>
+      <div class="info-row" id="info-place" hidden={!openPlace}>
+        <dt>Location</dt>
+        <dd>{openPlace}</dd>
+      </div>
       <div class="info-row" id="info-camera" hidden={!open?.source.camera}>
         <dt>Camera</dt>
         <dd>{open?.source.camera}</dd>
