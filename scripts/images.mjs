@@ -2,16 +2,15 @@
 // square thumbnails (400, 800), large versions (1600, 3000 on the long edge)
 // in AVIF and WebP, a small preview WebP and a JPEG for link previews.
 // Files are named after the slug and a hash of the original, so unchanged
-// photos are skipped and old versions are removed. The images are committed, so a
-// build only makes the ones that are missing; for those it downloads the original
-// when it is a Git LFS pointer. Afterwards content/images.json is updated with
-// what the build needs from each original.
+// photos are skipped and old versions are removed. Neither the originals nor the
+// images are in Git: the workflow keeps both in the GitHub Actions cache, so a run
+// only makes the images of new photos. Afterwards content/images.json is updated
+// with what the build needs from each original.
 import { mkdir, readdir, unlink, access } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
 import { loadContent, writeSources, ContentError, IMG_OUT_DIR } from '../src/lib/content.mjs';
-import { findPointers, fetchPointers, fetchNeeded } from './lfs-fetch.mjs';
 
 const exists = (f) => access(f).then(() => true, () => false);
 
@@ -52,14 +51,13 @@ async function runPool(tasks, size) {
 }
 
 try {
-  await fetchNeeded();
   const { photos, warnings } = await loadContent();
   for (const w of warnings) console.warn(`warning: ${w}`);
   await mkdir(IMG_OUT_DIR, { recursive: true });
 
   const wanted = new Set();
   const todo = [];
-  const needOriginal = new Set();
+  const missing = new Set();
   for (const p of photos) {
     const jobs = jobsFor(p);
     p.outputs = jobs.map((j) => j.name);
@@ -68,12 +66,13 @@ try {
       const out = path.join(IMG_OUT_DIR, job.name);
       if (!(await exists(out))) {
         todo.push(() => job.run().toFile(out));
-        if (p.pointer) needOriginal.add(p.file);
+        if (p.pointer) missing.add(p.file);
       }
     }
   }
-  // Originals that are Git LFS pointers but have images to make: download them.
-  if (needOriginal.size) await fetchPointers((await findPointers()).filter((ptr) => needOriginal.has(ptr.file)));
+  if (missing.size) {
+    throw new ContentError([...missing].map((f) => `${f}: the original is needed to make its images, run "npm run import"`));
+  }
 
   let removed = 0;
   for (const f of await readdir(IMG_OUT_DIR)) {

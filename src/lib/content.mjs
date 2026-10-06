@@ -14,8 +14,8 @@ export const PHOTOS_DIR = path.join(CONTENT_DIR, 'photos');
 export const IMG_OUT_DIR = path.join(ROOT, 'public', 'img');
 export const IMG_URL = '/img';
 // What the build needs to know about each original (size, keywords, checksum),
-// written by scripts/images.mjs. With it, a build works from Git LFS pointer
-// files and the committed images in public/img, without downloading the originals.
+// written by scripts/images.mjs. With it, a build reads only new or changed
+// originals instead of every photo.
 export const SOURCES_FILE = path.join(CONTENT_DIR, 'images.json');
 const SOURCES_VERSION = 2;
 const LFS_POINTER = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([0-9a-f]{64})\nsize (\d+)/;
@@ -551,7 +551,7 @@ export async function loadContent({ fresh = false } = {}) {
   // A Git LFS pointer without matching data in images.json: the original is needed.
   for (const d of draft) {
     if (sourceByFile.get(d.file)?.missing) {
-      errors.push(`${d.file} is a Git LFS pointer and content/images.json has no data for it: run "node scripts/lfs-fetch.mjs", then "npm run images"`);
+      errors.push(`${d.file} is not a photo but a Git LFS pointer, and content/images.json has no data for it: run "npm run import"`);
     }
   }
 

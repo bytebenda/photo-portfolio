@@ -1,14 +1,13 @@
 # Dieter photography portfolio
 
-A static photography portfolio: a square grid on black, filter pills for category, year and style, and a fullscreen photo view. Built with Astro, images made with sharp and committed, hosted on Vercel.
+A static photography portfolio: a square grid on black, filter pills for category, year and style, and a fullscreen photo view. Built with Astro and sharp in GitHub Actions, hosted on Vercel.
 
-The photos in `content/photos/` come from Google Drive (`npm run import`, see below). `npm run samples` makes generated sample photos for testing without Drive.
+The photos come from Google Drive and never go into Git. They live in three places: the Drive folder, the GitHub Actions cache (private to this repository: the originals and the web images, so a run only processes new photos), and the deployed site on Vercel. `content/photos/` and `public/img/` are ignored by Git; `npm run import` fills them locally.
 
 ## Adding a photo
 
-1. Put it in the Google Drive folder. The daily import (see below) adds it and its images. Or copy the exported file into `content/photos/` yourself.
-2. Optional: add an entry to `content/photos.yaml` at the position it should take in the grid.
-3. For a file you copied yourself: run `npm run images` and commit `content/photos/`, `content/images.json` and `public/img/`. Push, and Vercel publishes the site.
+1. Put it in the Google Drive folder. The next run of the workflow (every morning, or "Run workflow" in the Actions tab) imports it, makes its images and deploys the site.
+2. Optional: add an entry to `content/photos.yaml` at the position it should take in the grid, and push.
 
 ```yaml
 - file: 2026-08-lisbon-tram.jpg
@@ -27,7 +26,7 @@ A new category or style is one extra entry in `content/categories.yaml` or `cont
 
 `npm run import` copies every photo from the Google Drive folder in `src/site.config.mjs` (`driveFolder`) into `content/photos/`, from every subfolder at any depth. It records where each photo came from in `content/drive.yaml`, which the import writes and you do not edit.
 
-- Unchanged photos are skipped, photos changed in Drive are downloaded again, and photos removed from Drive are removed from `content/photos/`. Photos you copied into `content/photos/` yourself are left alone.
+- Unchanged photos are skipped, photos changed in Drive are downloaded again, and photos removed from Drive are removed from `content/photos/`.
 - A photo that sits in several folders, or a shortcut to a photo or folder, is imported once and gets the tags of every folder it is in.
 - A folder named `Private` is never imported, at any depth, with everything in it, also when reached through a shortcut. Photos imported from it before are removed. The names are in `driveSkipFolders` in `src/site.config.mjs`.
 - JPEG, PNG, WebP, TIFF and AVIF are imported. HEIC and camera RAW files are skipped with a warning: export them as JPEG in Drive.
@@ -41,7 +40,7 @@ Access is one environment variable, or none:
 | `GOOGLE_API_KEY` | The folder is shared as "anyone with the link". Make a key in Google Cloud Console with the Google Drive API enabled. |
 | `GOOGLE_SERVICE_ACCOUNT` | The folder stays private. Make a service account with the Google Drive API enabled, share the folder with its e-mail address (viewer), and pass the key JSON or the path to the key file. |
 
-`.github/workflows/drive-import.yml` runs the import from the Actions tab, every morning, and on every push that changes the import script or the workflow, makes the images for new photos, and commits the result to the branch it ran on, so Vercel publishes the new photos without a local checkout. Add the variable above as a repository secret when you use one.
+In the workflow, add the variable above as a repository secret when you use one.
 
 ### Filters from keywords
 
@@ -89,31 +88,36 @@ Photos without an entry in `photos.yaml` come after the listed ones: featured ph
 | Command | What it does |
 | --- | --- |
 | `npm install` | Install dependencies (Node 20 or newer) |
+| `npm run import` | Copy the photos from Google Drive into `content/photos/` (needed first on a fresh checkout) |
 | `npm run dev` | Make images, then start the dev server on localhost:4321 |
 | `npm run build` | Make images, then build the static site into `dist/` |
 | `npm run preview` | Serve the built site |
 | `npm run check` | Validate `content/` without building |
-| `npm run import` | Copy the photos from Google Drive into `content/photos/` |
 | `npm run images` | Make the missing images in `public/img/` and update `content/images.json` (runs before every build) |
-| `node scripts/lfs-fetch.mjs` | Download the originals the build still needs (runs before every build); `--all` downloads every original |
 | `npm run typecheck` | Type check the Astro pages and scripts |
 | `npm run samples` | Regenerate the sample photos |
 
 ## How it works
 
 - `src/lib/content.mjs` reads the YAML, the originals and their EXIF dates, turns keywords and Drive folder names into categories and styles, and applies the rules above. The pages, the image step and `npm run check` all use it.
-- `scripts/images.mjs` makes square thumbnails (400 and 800 px), large versions (1600 and 3000 px on the long edge, or the original size when smaller) in AVIF and WebP, a small preview and a JPEG for link previews. Output goes to `public/img/`, is committed, and is named after a hash of the original, so unchanged photos are skipped. It also writes `content/images.json` with each original's checksum, size, keywords and whether it is black and white. With both committed, a build works from Git LFS pointer files and never downloads or processes the originals: making the images for 33 photos takes about 7 minutes, the build then takes seconds.
+- `scripts/images.mjs` makes square thumbnails (400 and 800 px), large versions (1600 and 3000 px on the long edge, or the original size when smaller) in AVIF and WebP, a small preview and a JPEG for link previews. Output goes to `public/img/` and is named after a hash of the original, so unchanged photos are skipped. It also writes `content/images.json` (committed, no pixels) with each original's checksum, size, keywords, camera and lens and whether it is black and white. Making the images for 33 photos takes about 7 minutes; with the Actions cache a run only makes those of new photos.
 - `src/components/Gallery.astro` renders the header, grid, footer and photo view. `/photo/<slug>` pages render the same view with the photo open and their own title and preview image.
 - `src/scripts/gallery.ts` is the only JavaScript: hiding header, the scroll gap spring, filters (state in the URL query), and the photo view (history, keyboard, swipe, preloading, the (i) panel with camera and lens, which `i` toggles, and zoom up to 4x: pinch, pan with one finger and double tap on touch screens; the minus and plus icons, a click, dragging, trackpad pinch and the keys `+`, `-` and `0` on desktop). Camera and lens come from the EXIF of the original, stored in `content/images.json`; a photo without them has no (i). Animations switch off when the visitor's system asks for reduced motion.
 - Without JavaScript every square links to its photo page, so the site still works.
 
-## Deploying on Vercel
+## Building and deploying
 
-1. Import this repository in Vercel. The framework preset is Astro and the build command is `npm run build`.
-2. Leave Git LFS off in the project settings under Git. Vercel then clones the originals as small pointer files and builds from `public/img/` and `content/images.json`. Only when an image is missing does `scripts/lfs-fetch.mjs` download that original from GitHub. That works for a public repository; a private one needs a `GITHUB_TOKEN` environment variable with read access to the repository contents.
-3. Set `SITE_URL` (for example `https://example.com`) once the domain is known, so link previews use the right address. Without it the Vercel production URL is used.
+`.github/workflows/drive-import.yml` ("Build and deploy") does everything; Vercel itself does not build from Git (`"git": { "deploymentEnabled": false }` in `vercel.json`), because the repository has no photos.
 
-Git LFS storage counts against the GitHub quota. Downloads are rare now: Vercel and the import workflow work from pointer files. The committed images take about 2.4 MB per photo in normal Git storage, half of it the 3000 px versions.
+1. Restore the newest photo cache (originals and images).
+2. `npm run import`: download new or changed photos from Drive, remove deleted ones.
+3. `npm run images`: make the images of new photos and update `content/images.json`.
+4. Save the cache when something changed, and commit `content/drive.yaml` and `content/images.json` when they changed.
+5. `vercel build` and `vercel deploy --prebuilt`: production for main, a preview for other branches.
+
+It runs on every push, every morning and from the Actions tab. It needs the repository secret `VERCEL_TOKEN` (Vercel, Account Settings, Tokens). The Vercel team and project IDs are in the workflow. When the cache has expired (GitHub drops caches unused for 7 days), the next run downloads all photos again and makes all images, which takes some minutes.
+
+Set `SITE_URL` (for example `https://example.com`) in the Vercel project's environment variables once the domain is known, so link previews use the right address.
 
 ## Open points
 

@@ -4,11 +4,11 @@
   "type": "module",
   "version": "0.1.0",
   "scripts": {
-    "check": "node scripts/lfs-fetch.mjs && node scripts/check.mjs",
+    "check": "node scripts/check.mjs",
     "import": "node scripts/drive-import.mjs",
     "images": "node scripts/images.mjs",
-    "dev": "node scripts/lfs-fetch.mjs && node scripts/images.mjs && astro dev",
-    "build": "node scripts/lfs-fetch.mjs && node scripts/images.mjs && astro build",
+    "dev": "node scripts/images.mjs && astro dev",
+    "build": "node scripts/images.mjs && astro build",
     "preview": "astro preview",
     "samples": "node scripts/make-samples.mjs",
     "typecheck": "astro check"

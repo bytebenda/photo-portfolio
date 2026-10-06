@@ -1,14 +1,17 @@
-# Imports the photos from Google Drive and commits them, so Vercel builds the
-# site with the new photos. Run it from the Actions tab ("Run workflow"); it also
-# runs every morning and when the import script or this file changes. It also
-# makes the web images (public/img) for new photos and commits them, so Vercel
-# builds without downloading the originals.
+# Builds the site and deploys it to Vercel. Photos never go into Git: they come
+# from Google Drive, and the originals and web images are kept between runs in
+# the GitHub Actions cache (private to this repository), so a run only downloads
+# and processes new photos.
 #
-# Optional repository secrets (Settings, Secrets and variables, Actions):
-#   GOOGLE_API_KEY          an API key, for a folder shared as "anyone with the link"
-#   GOOGLE_SERVICE_ACCOUNT  the service account key JSON, for a private folder
-# Without either, the folder must be shared as "anyone with the link".
-name: Import photos from Google Drive
+# Runs on every push (main deploys to production, other branches to a preview),
+# every morning, and from the Actions tab ("Run workflow", production).
+#
+# Repository secrets (Settings, Secrets and variables, Actions):
+#   VERCEL_TOKEN            required: a token from Vercel, Account Settings, Tokens
+#   GOOGLE_API_KEY          optional: an API key, for a folder shared as "anyone with the link"
+#   GOOGLE_SERVICE_ACCOUNT  optional: the service account key JSON, for a private folder
+# Without a Google secret the Drive folder must be shared as "anyone with the link".
+name: Build and deploy
 
 on:
   workflow_dispatch:
@@ -18,9 +21,6 @@ on:
         type: boolean
         default: false
   push:
-    paths:
-      - scripts/drive-import.mjs
-      - .github/workflows/drive-import.yml
   schedule:
     - cron: '17 6 * * *'
 
@@ -28,42 +28,76 @@ permissions:
   contents: write
 
 concurrency:
-  group: drive-import
+  group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  import:
+  deploy:
     runs-on: ubuntu-latest
     env:
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-      # Keep the originals as Git LFS pointers: only new photos are downloaded
-      # (from Drive), which saves Git LFS bandwidth on every run.
-      GIT_LFS_SKIP_SMUDGE: '1'
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # Not secret: they name the Vercel team and project, the token grants access.
+      VERCEL_ORG_ID: team_W8JlxPW6jIDzZKdE9yC8hgdE
+      VERCEL_PROJECT_ID: prj_WUHS7Ok8CC2em2GmCAEsNhM4qHDN
+      TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: false
-      # New photos must still be committed to Git LFS, so its hooks and filters are needed.
-      - run: git lfs install --local
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Import
+      - run: npm ci
+
+      # The newest cache of originals and images, from this branch or main.
+      - name: Restore photos
+        id: photos
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            content/photos
+            public/img
+          key: photos-${{ github.run_id }}
+          restore-keys: photos-
+
+      - name: Import from Google Drive
+        run: npm run import -- ${{ inputs.refresh && '--refresh' || '' }}
+
+      - name: Make images
+        run: npm run images
+
+      - name: Save photos
+        if: steps.photos.outputs.cache-matched-key != format('photos-{0}', hashFiles('content/drive.yaml', 'content/images.json'))
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            content/photos
+            public/img
+          key: photos-${{ hashFiles('content/drive.yaml', 'content/images.json') }}
+
+      # drive.yaml and images.json hold names, keywords and sizes, no pixels.
+      - name: Commit photo list
         run: |
-          npm ci
-          npm run import -- ${{ inputs.refresh && '--refresh' || '' }}
-          npm run images
-      - name: Commit
-        run: |
-          git add content/ public/img/
+          git add content/drive.yaml content/images.json
           if git diff --cached --quiet; then
             echo "No changes in Google Drive"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Import photos from Google Drive"
+          git commit -m "Update the photo list from Google Drive"
           git pull --rebase
           git push
+
+      - name: Deploy to Vercel
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::Add the VERCEL_TOKEN repository secret (a token from Vercel, Account Settings, Tokens)"
+            exit 1
+          fi
+          prod=$([ "$TARGET" = production ] && echo --prod || true)
+          npx --yes vercel@latest pull --yes --environment="$TARGET" --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build $prod --token="$VERCEL_TOKEN"
+          url=$(npx --yes vercel@latest deploy --prebuilt $prod --token="$VERCEL_TOKEN")
+          echo "Deployed to $TARGET: $url" | tee -a "$GITHUB_STEP_SUMMARY"

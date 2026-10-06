@@ -4,3 +4,7 @@ dist/
 .vercel/
 .DS_Store
 *.log
+# Photos never go into Git: the workflow gets them from Google Drive and keeps
+# them in the private GitHub Actions cache (see README).
+content/photos/
+public/img/
