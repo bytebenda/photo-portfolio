@@ -165,12 +165,19 @@ function writeQuery() {
 }
 
 const narrowed = (k: Key) => options[k].some((v) => !selected[k].has(v));
+// A group restricts the photos only when some, not all, of its options are ticked.
+const restricts = (k: Key) => selected[k].size > 0 && narrowed(k);
+// Nothing ticked anywhere (after "Deselect all"): no photos.
+const noneTicked = () => KEYS.every((k) => !options[k].length || selected[k].size === 0);
 
 // Within a group options combine with OR, across groups with AND.
 // A group with every option ticked lets everything through, including photos
-// without a value for it (no year, uncategorized).
+// without a value for it (no year, uncategorized). A group with nothing ticked
+// is left out, so after "Deselect all" each option ticked adds its photos.
+// With `except` (the counts next to the options) the empty state is ignored.
 function passes(p: Photo, except?: Key) {
-  return KEYS.every((k) => k === except || !narrowed(k) || p[k].some((v) => selected[k].has(v)));
+  if (!except && noneTicked()) return false;
+  return KEYS.every((k) => k === except || !restricts(k) || p[k].some((v) => selected[k].has(v)));
 }
 
 let visible: boolean[] = photos.map(() => true);
@@ -199,7 +206,7 @@ function setPanel(filter: HTMLElement | null) {
 const leavesOf = (input: HTMLInputElement) => (input.dataset.leaves ?? '').split(',').filter(Boolean);
 
 function renderFilterUI() {
-  const active = KEYS.filter((k) => options[k].length && narrowed(k)).length;
+  const active = KEYS.filter((k) => options[k].length && restricts(k)).length;
   filterPill.classList.toggle('is-narrowed', active > 0);
   filterCount.hidden = active === 0;
   filterCount.textContent = String(active);
