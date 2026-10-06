@@ -45,6 +45,8 @@ export type Source = {
   tree: string[][];
   title: string | null;
   monochrome: boolean;
+  camera: string | null;
+  lens: string | null;
 };
 export type ListItem = Option & { match: string[]; default: boolean; monochrome: boolean };
 export type DriveEntry = { file: string; id: string; md5: string | null; paths: string[][]; description?: string; taken?: string };

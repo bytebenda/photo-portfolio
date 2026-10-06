@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "photos": {
   "2024-05-08-groupofcows.jpg": {
    "sha256": "5d09cd32079b384d401a87fb52dbaa15c5bcf5e44dc46d5cfb3ee1e560bb9393",
@@ -10,6 +10,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": null,
+   "lens": null,
    "monochrome": false,
    "outputs": [
     "2024-05-08-groupofcows-165fa103-t400.avif",
@@ -33,6 +35,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "20250303-dscf0440-22a75f05-t400.avif",
@@ -56,6 +60,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF27mmF2.8",
    "monochrome": false,
    "outputs": [
     "20250511-dscf1048-a8251d3e-t400.avif",
@@ -79,6 +85,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF27mmF2.8",
    "monochrome": false,
    "outputs": [
     "20250511-dscf1050-bc184d63-t400.avif",
@@ -102,6 +110,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF27mmF2.8",
    "monochrome": false,
    "outputs": [
     "20250511-dscf1051-67ebc8c9-t400.avif",
@@ -125,6 +135,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "dscf0369-a40a2eea-t400.avif",
@@ -148,6 +160,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "dscf0407-9f3732ff-t400.avif",
@@ -171,6 +185,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF27mmF2.8",
    "monochrome": false,
    "outputs": [
     "dscf5268-b79c3e02-t400.avif",
@@ -194,6 +210,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF27mmF2.8",
    "monochrome": false,
    "outputs": [
     "dscf5315-70076723-t400.avif",
@@ -217,6 +235,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF27mmF2.8",
    "monochrome": false,
    "outputs": [
     "dscf5318-170e413b-t400.avif",
@@ -240,6 +260,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf5441-8cfd9308-t400.avif",
@@ -263,6 +285,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf5852-6afe7aee-t400.avif",
@@ -286,6 +310,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf6870-11b42618-t400.avif",
@@ -309,6 +335,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf6912-ab072eb8-t400.avif",
@@ -332,6 +360,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7048-1559e575-t400.avif",
@@ -355,6 +385,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7079-d7c1153e-t400.avif",
@@ -378,6 +410,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7418-e60fa3a2-t400.avif",
@@ -401,6 +435,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7465-ffbf48ba-t400.avif",
@@ -424,6 +460,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7473-b3ab2310-t400.avif",
@@ -447,6 +485,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7491-58d63fca-t400.avif",
@@ -470,6 +510,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7570-157661d7-t400.avif",
@@ -493,6 +535,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7702-3b3c6776-t400.avif",
@@ -516,6 +560,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": true,
    "outputs": [
     "dscf7747-2-3-ee625486-t400.avif",
@@ -539,6 +585,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7773-2-b4f6e5b3-t400.avif",
@@ -562,6 +610,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7802-ec322bf8-t400.avif",
@@ -585,6 +635,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
     "dscf7822-141f67c2-t400.avif",
@@ -608,6 +660,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": true,
    "outputs": [
     "dscf9396-2-e5dea2ed-t400.avif",
@@ -631,6 +685,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": true,
    "outputs": [
     "dscf9467-f28335c5-t400.avif",
@@ -654,6 +710,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "dscf9534-e71cfdc3-t400.avif",
@@ -677,6 +735,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "dscf9535-0ef76b92-t400.avif",
@@ -700,6 +760,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": true,
    "outputs": [
     "dscf9564-56608fdb-t400.avif",
@@ -723,6 +785,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "dscf9644-aaa0fa32-t400.avif",
@@ -746,6 +810,8 @@
    "keywords": [],
    "tree": [],
    "title": null,
+   "camera": "FUJIFILM X-T20",
+   "lens": "FUJIFILM XF18-55mmF2.8-4 R LM OIS",
    "monochrome": false,
    "outputs": [
     "dscf9665-5eeb6d7a-t400.avif",
