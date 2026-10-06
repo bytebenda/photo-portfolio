@@ -709,6 +709,11 @@ html:not(.hero-on) .hero-hint {
   visibility: hidden;
   transition: opacity 300ms var(--ease), visibility 0s 300ms;
 }
+/* With few photos visible the page must still scroll one full hero height,
+   or the globe can never hand over to the grid. */
+.hero main {
+  min-height: calc(100lvh - 64px);
+}
 .hero-on .grid {
   opacity: var(--hero-x, 0);
 }

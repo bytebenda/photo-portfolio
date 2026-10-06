@@ -60,7 +60,22 @@ const MAX_GAP = 8;
 
 function setHeaderHidden(hidden: boolean) {
   header.classList.toggle('is-hidden', hidden);
+  hoverReveal = false;
 }
+
+// On desktop the hidden header slides in when the cursor reaches the top edge,
+// and slides out again once the cursor moves away below it.
+let hoverReveal = false;
+const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse' || !finePointer.matches || root.classList.contains('viewer-open')) return;
+  if (e.clientY <= 24 && header.classList.contains('is-hidden')) {
+    setHeaderHidden(false);
+    hoverReveal = true;
+  } else if (hoverReveal && e.clientY > 96 && !openPanel && window.scrollY >= 10) {
+    setHeaderHidden(true);
+  }
+});
 
 function stepGap() {
   // Damped spring towards the target gap; settles in about 300 ms.
