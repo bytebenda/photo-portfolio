@@ -1,6 +1,8 @@
 # Imports the photos from Google Drive and commits them, so Vercel builds the
 # site with the new photos. Run it from the Actions tab ("Run workflow"); it also
-# runs every Monday morning and when the import script or this file changes.
+# runs every morning and when the import script or this file changes. It also
+# makes the web images (public/img) for new photos and commits them, so Vercel
+# builds without downloading the originals.
 #
 # Optional repository secrets (Settings, Secrets and variables, Actions):
 #   GOOGLE_API_KEY          an API key, for a folder shared as "anyone with the link"
@@ -20,7 +22,7 @@ on:
       - scripts/drive-import.mjs
       - .github/workflows/drive-import.yml
   schedule:
-    - cron: '17 6 * * 1'
+    - cron: '17 6 * * *'
 
 permissions:
   contents: write
@@ -35,10 +37,15 @@ jobs:
     env:
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      # Keep the originals as Git LFS pointers: only new photos are downloaded
+      # (from Drive), which saves Git LFS bandwidth on every run.
+      GIT_LFS_SKIP_SMUDGE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
+      # New photos must still be committed to Git LFS, so its hooks and filters are needed.
+      - run: git lfs install --local
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,9 +54,10 @@ jobs:
         run: |
           npm ci
           npm run import -- ${{ inputs.refresh && '--refresh' || '' }}
+          npm run images
       - name: Commit
         run: |
-          git add content/
+          git add content/ public/img/
           if git diff --cached --quiet; then
             echo "No changes in Google Drive"
             exit 0

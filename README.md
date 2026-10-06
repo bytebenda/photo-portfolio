@@ -1,14 +1,14 @@
 # Dieter photography portfolio
 
-A static photography portfolio: a square grid on black, filter pills for category, year and style, and a fullscreen photo view. Built with Astro, images made with sharp at build time, hosted on Vercel.
+A static photography portfolio: a square grid on black, filter pills for category, year and style, and a fullscreen photo view. Built with Astro, images made with sharp and committed, hosted on Vercel.
 
 The photos in `content/photos/` come from Google Drive (`npm run import`, see below). `npm run samples` makes generated sample photos for testing without Drive.
 
 ## Adding a photo
 
-1. Copy the exported file into `content/photos/`, or put it in the Google Drive folder and run the import (see below).
-2. Add an entry to `content/photos.yaml` at the position it should take in the grid.
-3. Run `npm run check`, or just push. Vercel builds and publishes the site.
+1. Put it in the Google Drive folder. The daily import (see below) adds it and its images. Or copy the exported file into `content/photos/` yourself.
+2. Optional: add an entry to `content/photos.yaml` at the position it should take in the grid.
+3. For a file you copied yourself: run `npm run images` and commit `content/photos/`, `content/images.json` and `public/img/`. Push, and Vercel publishes the site.
 
 ```yaml
 - file: 2026-08-lisbon-tram.jpg
@@ -18,6 +18,7 @@ The photos in `content/photos/` come from Google Drive (`npm run import`, see be
   style: colour
   year: 2026                 # optional, overrides the EXIF capture year
   focus: [0.5, 0.3]          # optional crop centre for the square thumbnail
+  featured: true             # optional, puts it among the featured photos
 ```
 
 A new category or style is one extra entry in `content/categories.yaml` or `content/styles.yaml`. It shows up in the filter as soon as one photo uses it.
@@ -39,7 +40,7 @@ Access is one environment variable, or none:
 | `GOOGLE_API_KEY` | The folder is shared as "anyone with the link". Make a key in Google Cloud Console with the Google Drive API enabled. |
 | `GOOGLE_SERVICE_ACCOUNT` | The folder stays private. Make a service account with the Google Drive API enabled, share the folder with its e-mail address (viewer), and pass the key JSON or the path to the key file. |
 
-`.github/workflows/drive-import.yml` runs the import from the Actions tab, every Monday, and on every push that changes the import script or the workflow, and commits the result to the branch it ran on, so Vercel publishes the new photos without a local checkout. Add the variable above as a repository secret when you use one.
+`.github/workflows/drive-import.yml` runs the import from the Actions tab, every morning, and on every push that changes the import script or the workflow, makes the images for new photos, and commits the result to the branch it ran on, so Vercel publishes the new photos without a local checkout. Add the variable above as a repository secret when you use one.
 
 ### Filters from keywords
 
@@ -50,6 +51,7 @@ The filters follow the keywords in your photos. Give a photo its categories and 
 | `Street`, `Travel`, `Street art` | A category each, labelled as written |
 | `Film` under a parent `Type` (Lightroom: Type > Film), or `type: film` | The photo's type; a new type becomes a new option in the Style filter |
 | A word from `styles.yaml`, such as `black and white` or `zwart-wit` | The photo's type, also without the parent |
+| `featured` or `uitgelicht` (set in `content/keywords.yaml`) | Puts the photo on top of the grid, not a filter |
 | A parent such as `Category` in Category > Street | Nothing, only `Street` counts |
 | A keyword listed under `ignore` in `content/keywords.yaml` | Nothing |
 
@@ -60,7 +62,7 @@ In Lightroom Classic: select the photos, type the keywords in the Keywording pan
 | Field | Comes from |
 | --- | --- |
 | Categories | The keywords as above. Drive folder names and `#hashtags` in a Drive description also count, but only when they contain a listed category word (`Reizen/Lissabon 2024` gives travel). No match gives Uncategorized. |
-| Type (Style) | A Type keyword, otherwise the first matching style in `styles.yaml`, where the default only wins when nothing else matches. No match gives the style marked `default: true`. |
+| Type (Style) | A Type keyword, otherwise the first matching style in `styles.yaml`, where the default only wins when nothing else matches. A photo without colour then gets the style marked `monochrome: true` (black and white); a light tone such as sepia counts as colour. No match gives the style marked `default: true`. |
 | Year | The capture date in the photo's EXIF, otherwise a year in a folder name (`Scans 1998`), useful for film scans. |
 | Title | The Title stored in the file, otherwise the first line of the Drive description without hashtags, otherwise the deepest folder that says more than a category or style (`Lissabon 2024`). |
 
@@ -68,7 +70,7 @@ In Lightroom Classic: select the photos, type the keywords in the Keywording pan
 
 A photo already in Drive that gets keywords later has to reach the site again. With an API key or service account the import sees the change. Without one, run the workflow with "refresh" ticked (or `npm run import -- --refresh`), which downloads every photo and keeps the changed ones, or delete the file in Drive and upload the new version.
 
-Photos without an entry in `photos.yaml` come after the listed ones, newest first. To give one a place in the grid, a better title, other categories or a crop centre, add an entry for its file name to `photos.yaml`. Fields you set there win; categories and style may be left out and then still come from the keywords.
+Photos without an entry in `photos.yaml` come after the listed ones: featured photos first, then newest first. A photo is featured with a keyword or a Drive folder named in `featured` in `content/keywords.yaml` (add `favorieten` to feature the Favorieten folder), or with `featured: true` in `photos.yaml`. To give one a place in the grid, a better title, other categories or a crop centre, add an entry for its file name to `photos.yaml`. Fields you set there win; categories and style may be left out and then still come from the keywords.
 
 ## Rules the build checks
 
@@ -91,14 +93,15 @@ Photos without an entry in `photos.yaml` come after the listed ones, newest firs
 | `npm run preview` | Serve the built site |
 | `npm run check` | Validate `content/` without building |
 | `npm run import` | Copy the photos from Google Drive into `content/photos/` |
-| `node scripts/lfs-fetch.mjs` | Replace Git LFS pointer files with the real photos (runs before every build) |
+| `npm run images` | Make the missing images in `public/img/` and update `content/images.json` (runs before every build) |
+| `node scripts/lfs-fetch.mjs` | Download the originals the build still needs (runs before every build); `--all` downloads every original |
 | `npm run typecheck` | Type check the Astro pages and scripts |
 | `npm run samples` | Regenerate the sample photos |
 
 ## How it works
 
 - `src/lib/content.mjs` reads the YAML, the originals and their EXIF dates, turns keywords and Drive folder names into categories and styles, and applies the rules above. The pages, the image step and `npm run check` all use it.
-- `scripts/images.mjs` makes square thumbnails (400 and 800 px), large versions (1600 and 3000 px on the long edge, or the original size when smaller) in AVIF and WebP, a small preview and a JPEG for link previews. Output goes to `public/img/` (not committed) and is named after a hash of the original, so unchanged photos are skipped.
+- `scripts/images.mjs` makes square thumbnails (400 and 800 px), large versions (1600 and 3000 px on the long edge, or the original size when smaller) in AVIF and WebP, a small preview and a JPEG for link previews. Output goes to `public/img/`, is committed, and is named after a hash of the original, so unchanged photos are skipped. It also writes `content/images.json` with each original's checksum, size, keywords and whether it is black and white. With both committed, a build works from Git LFS pointer files and never downloads or processes the originals: making the images for 33 photos takes about 7 minutes, the build then takes seconds.
 - `src/components/Gallery.astro` renders the header, grid, footer and photo view. `/photo/<slug>` pages render the same view with the photo open and their own title and preview image.
 - `src/scripts/gallery.ts` is the only JavaScript: hiding header, the scroll gap spring, filters (state in the URL query), and the photo view (history, keyboard, swipe, preloading). Animations switch off when the visitor's system asks for reduced motion.
 - Without JavaScript every square links to its photo page, so the site still works.
@@ -106,10 +109,10 @@ Photos without an entry in `photos.yaml` come after the listed ones, newest firs
 ## Deploying on Vercel
 
 1. Import this repository in Vercel. The framework preset is Astro and the build command is `npm run build`.
-2. Optional: in the project settings under Git, turn on Git LFS. When it is off, Vercel clones the photos as Git LFS pointer files and `scripts/lfs-fetch.mjs` downloads the real files from GitHub at the start of the build. That works for a public repository; a private one needs a `GITHUB_TOKEN` environment variable with read access to the repository contents.
+2. Leave Git LFS off in the project settings under Git. Vercel then clones the originals as small pointer files and builds from `public/img/` and `content/images.json`. Only when an image is missing does `scripts/lfs-fetch.mjs` download that original from GitHub. That works for a public repository; a private one needs a `GITHUB_TOKEN` environment variable with read access to the repository contents.
 3. Set `SITE_URL` (for example `https://example.com`) once the domain is known, so link previews use the right address. Without it the Vercel production URL is used.
 
-Git LFS storage and bandwidth count against the GitHub quota, and every Vercel build downloads the originals. Check the quota before pushing the full set.
+Git LFS storage counts against the GitHub quota. Downloads are rare now: Vercel and the import workflow work from pointer files. The committed images take about 2.4 MB per photo in normal Git storage, half of it the 3000 px versions.
 
 ## Open points
 

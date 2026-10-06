@@ -13,6 +13,8 @@
 - id: black-and-white
   label: Black and white
   match: [zwart-wit, zwartwit, zw, bw, b&w, monochrome, black & white]
+  # A photo without colour that names no type gets this one.
+  monochrome: true
 - id: film
   label: Film
   match: [analoog, analog, analogue, 35mm, kodak, portra, ilford]
