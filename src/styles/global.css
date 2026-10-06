@@ -707,12 +707,6 @@ html:not(.hero-on) .hero-hint {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-on .grid {
-    opacity: var(--hero-p, 0);
-  }
-  .hero-canvas {
-    opacity: calc(1 - var(--hero-p, 0));
-  }
   .hero-hint svg {
     animation: none;
   }

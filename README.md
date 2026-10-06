@@ -88,7 +88,7 @@ The home page opens on a full-screen globe made of the gallery's square thumbnai
 - The globe has about 220 tiles on desktop and 120 on phones, so photos repeat; each run of tiles holds every photo once, in a shuffled order.
 - It shows only on the home page without filters in the address. Links to a photo (`/photo/...`) or a filtered view open on the grid as before.
 - It is drawn with WebGL (Three.js, about 130 KB gzipped). That code loads after the page, so the grid is not slowed down. Without WebGL or JavaScript the page is the plain grid.
-- Visitors whose system asks for reduced motion see a still globe that fades into the grid while scrolling.
+- When the visitor's system asks for reduced motion (such as Reduce Motion on an iPhone), the globe does not spin, tilt or fade in by itself, but scrolling still unrolls it into the grid, since that motion follows the visitor's own scrolling.
 
 ## Rules the build checks
 

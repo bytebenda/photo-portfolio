@@ -76,15 +76,17 @@ function start() {
     const moving = !still();
 
     intro = moving ? clamp((now - readyAt) / 900) : 1;
-    const p1 = moving ? clamp(p / STAGE1) : 0;
-    const p2 = moving ? clamp((p - STAGE1) / (1 - STAGE1)) : 0;
+    // The unroll follows the scroll, so it runs with Reduce Motion too; only the
+    // motion nobody asked for (spin, tilt, momentum, intro fade) is left out.
+    const p1 = clamp(p / STAGE1);
+    const p2 = clamp((p - STAGE1) / (1 - STAGE1));
 
     // Slow spin plus drag momentum; both stop while the globe unrolls, so the
     // seam stays at the back.
     const free = 1 - smooth(clamp(p / 0.1));
     if (!dragging) {
       spinV *= Math.exp(-dt * 2.2);
-      if (moving) rot += (SPIN * free + spinV * free) * dt;
+      rot += ((moving ? SPIN : 0) + spinV) * free * dt;
     }
     tilt.x += (tiltTarget.x - tilt.x) * Math.min(1, dt * 4);
     tilt.y += (tiltTarget.y - tilt.y) * Math.min(1, dt * 4);
@@ -137,7 +139,7 @@ function start() {
 
   // Drag or swipe sideways to spin; vertical swipes still scroll (touch-action: pan-y).
   canvas.addEventListener('pointerdown', (e) => {
-    if (progress() >= 0.1 || still()) return;
+    if (progress() >= 0.1) return;
     dragging = true;
     dragX = e.clientX;
     dragT = performance.now();
@@ -161,7 +163,7 @@ function start() {
     if (!dragging) return;
     dragging = false;
     // A release after a pause throws nothing.
-    spinV = performance.now() - dragT > 80 ? 0 : clamp(dragV, -6, 6);
+    spinV = still() || performance.now() - dragT > 80 ? 0 : clamp(dragV, -6, 6);
     canvas.classList.remove('is-dragging');
     kick();
   };
