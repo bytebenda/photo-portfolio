@@ -2,7 +2,7 @@
 
 A static photography portfolio: a square grid on black, filter pills for category, year and style, and a fullscreen photo view. Built with Astro, images made with sharp at build time, hosted on Vercel.
 
-The photos in `content/photos/` are generated samples (`npm run samples`). Replace them with your own.
+The photos in `content/photos/` come from Google Drive (`npm run import`, see below). `npm run samples` makes generated sample photos for testing without Drive.
 
 ## Adding a photo
 
@@ -31,14 +31,15 @@ A new category or style is one extra entry in `content/categories.yaml` or `cont
 - JPEG, PNG, WebP, TIFF and AVIF are imported. HEIC and camera RAW files are skipped with a warning: export them as JPEG in Drive.
 - `node scripts/drive-import.mjs --dry-run` shows what would change without writing anything.
 
-Access is one environment variable:
+Access is one environment variable, or none:
 
 | Variable | When |
 | --- | --- |
+| none | The folder is shared as "anyone with the link". The import reads Drive's public folder pages. A photo you replace in Drive under the same file is not downloaded again, because those pages give no checksum: delete and re-upload it, or use an API key. |
 | `GOOGLE_API_KEY` | The folder is shared as "anyone with the link". Make a key in Google Cloud Console with the Google Drive API enabled. |
 | `GOOGLE_SERVICE_ACCOUNT` | The folder stays private. Make a service account with the Google Drive API enabled, share the folder with its e-mail address (viewer), and pass the key JSON or the path to the key file. |
 
-`.github/workflows/drive-import.yml` runs the import from the Actions tab and every Monday, and commits the result, so Vercel publishes the new photos without a local checkout. Add the variable above as a repository secret.
+`.github/workflows/drive-import.yml` runs the import from the Actions tab, every Monday, and on every push that changes the import script or the workflow, and commits the result to the branch it ran on, so Vercel publishes the new photos without a local checkout. Add the variable above as a repository secret when you use one.
 
 ### Tags from folder names
 
