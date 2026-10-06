@@ -263,6 +263,20 @@ const fetchFile = (d) => (LINK_MODE ? downloadPublic(d.id, d.file) : drive(`file
 const previous = await readManifest();
 const prevById = new Map(previous.map((m) => [m.id, m]));
 
+// A photo on disk only counts as imported when it is the version the photo list
+// names. The originals come from a cache that can be older than the list (a run
+// on main cannot use the cache of a branch), and an old copy would bring back
+// old keywords.
+const localMd5 = new Map();
+async function onDiskAs(file, md5) {
+  if (!md5) return false;
+  if (!localMd5.has(file)) {
+    const buf = await readFile(path.join(PHOTOS_DIR, file)).catch(() => null);
+    localMd5.set(file, buf ? createHash('md5').update(buf).digest('hex') : null);
+  }
+  return localMd5.get(file) === md5;
+}
+
 // The public pages give no checksum. Photos imported before keep the checksum
 // they had; new ones are downloaded first, so duplicates can still be found.
 // With --refresh every photo is downloaded, so changed ones get a new checksum.
@@ -272,7 +286,7 @@ if (LINK_MODE && !DRY_RUN) {
   const fresh = [];
   for (const img of images) {
     const prev = prevById.get(img.id);
-    if (!REFRESH && prev && (await exists(path.join(PHOTOS_DIR, prev.file)))) img.md5Checksum = prev.md5;
+    if (!REFRESH && prev && (await onDiskAs(prev.file, prev.md5))) img.md5Checksum = prev.md5;
     else fresh.push(img);
   }
   if (fresh.length) console.log(`drive-import: downloading ${fresh.length} ${REFRESH ? 'photos to compare' : 'new photos'}`);
@@ -325,8 +339,8 @@ for (const img of byContent.values()) {
     ...(img.imageMediaMetadata?.time ? { taken: img.imageMediaMetadata.time } : {}),
   };
   next.push(entry);
-  const onDisk = await exists(path.join(PHOTOS_DIR, file));
-  if (!onDisk || !prev || prev.md5 !== entry.md5) downloads.push({ ...entry, size: Number(img.size) || 0, isNew: !prev });
+  const current = await onDiskAs(file, entry.md5);
+  if (!current || !prev || prev.md5 !== entry.md5) downloads.push({ ...entry, size: Number(img.size) || 0, isNew: !prev });
 }
 
 const keep = new Set(next.map((m) => m.file));
