@@ -1,7 +1,16 @@
 # Allowed styles (the processing look). Order here is the order in the Style filter.
+#
+# match: words in Google Drive folder names (or #hashtags) that give a photo this
+# style, as in categories.yaml. A photo has one style. When several match, the
+# first one in this list wins, but the default style only wins when nothing else
+# matches, so "Film kleur" gives film. No match at all gives the default style.
 - id: colour
   label: Colour
+  match: [color, kleur]
+  default: true
 - id: black-and-white
   label: Black and white
+  match: [zwart-wit, zwartwit, zw, bw, monochrome]
 - id: film
   label: Film
+  match: [analoog, analog, analogue, 35mm, kodak, portra, ilford]

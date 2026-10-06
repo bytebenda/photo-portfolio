@@ -1,12 +1,22 @@
 # Allowed categories. Order here is the order in the Categories filter.
 # A category shows up in the filter as soon as one photo uses it.
+#
+# match: words in Google Drive folder names (or #hashtags in a Drive description)
+# that give a photo this category. The id and label always match. Words match
+# whole words, without regard to case or accents: "straat" matches the folder
+# "Straat Gent 2025" but not "Straatsburg". A photo can get several categories.
 - id: street
   label: Street
+  match: [straat, straatfotografie, streetphotography]
 - id: travel
   label: Travel
+  match: [reis, reizen, vakantie, trip, citytrip]
 - id: landscape
   label: Landscape
+  match: [landschap, landschappen, natuur, nature, bos, zee, bergen]
 - id: portrait
   label: Portrait
+  match: [portret, portretten, portraits, mensen, people]
 - id: architecture
   label: Architecture
+  match: [architectuur, gebouwen, buildings]

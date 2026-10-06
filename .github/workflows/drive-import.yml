@@ -1,0 +1,61 @@
+# Imports the photos from Google Drive and commits them, so Vercel builds the
+# site with the new photos. Run it from the Actions tab ("Run workflow"); it also
+# runs every Monday morning.
+#
+# Needs one repository secret (Settings, Secrets and variables, Actions):
+#   GOOGLE_API_KEY          when the Drive folder is shared as "anyone with the link"
+#   GOOGLE_SERVICE_ACCOUNT  the service account key JSON, for a private folder
+name: Import photos from Google Drive
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: drive-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+    steps:
+      - name: Check access
+        id: access
+        run: |
+          if [ -z "$GOOGLE_API_KEY" ] && [ -z "$GOOGLE_SERVICE_ACCOUNT" ]; then
+            echo "::warning::Set the GOOGLE_API_KEY or GOOGLE_SERVICE_ACCOUNT secret to import from Google Drive"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.access.outputs.skip != 'true'
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        if: steps.access.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Import
+        if: steps.access.outputs.skip != 'true'
+        run: |
+          npm ci
+          npm run import
+      - name: Commit
+        if: steps.access.outputs.skip != 'true'
+        run: |
+          git add content/
+          if git diff --cached --quiet; then
+            echo "No changes in Google Drive"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Import photos from Google Drive"
+          git push
