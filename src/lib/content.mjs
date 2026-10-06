@@ -90,27 +90,31 @@ function readList(list, file, errors) {
   });
 }
 
-/* Tags for photos imported from Google Drive (scripts/drive-import.mjs).
-   A photo's tags are the names of the folders it sits in plus the #hashtags in
-   its Drive description. A category or style applies when one of its words (id,
-   label or "match") appears in a tag as whole words: "street" matches the folder
-   "Street Brussel 2025", "black and white" matches "Zwart-wit / black and white". */
+/* Tags: what decides a photo's categories and style when photos.yaml leaves them out.
+   A photo's tags are the keywords stored in the file (XMP dc:subject or IPTC
+   Keywords, as Lightroom, Capture One and the Fujifilm app write them), plus, for
+   photos from Google Drive, the names of the folders it sits in and the #hashtags
+   in its Drive description. A category or style applies when one of its words (id,
+   label or "match") appears in a tag as whole words: the keyword "Street" matches
+   street, the folder "Zwart-wit Gent" matches black-and-white. */
 
 const tagSlug = (s) =>
   String(s)
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
 const wordsOf = (item) => [...new Set([item.id, item.label, ...item.match].map(tagSlug).filter(Boolean))];
 const hasWords = (tag, words) => `-${tag}-`.includes(`-${words}-`);
+const HASHTAG = /#[\p{L}\p{N}_-]+/gu;
 
 /** Folder names and description hashtags of a Drive photo, as slugs. */
 export function driveTags(d) {
-  const folders = (d.paths ?? []).flat();
-  const hashtags = (String(d.description ?? '').match(/#[\p{L}\p{N}_-]+/gu) ?? []).map((h) => h.slice(1));
+  const folders = (d?.paths ?? []).flat();
+  const hashtags = (String(d?.description ?? '').match(HASHTAG) ?? []).map((h) => h.slice(1));
   return [...new Set([...folders, ...hashtags].map(tagSlug).filter(Boolean))];
 }
 
@@ -130,51 +134,64 @@ function leftover(tag, categories, styles) {
   return rest.replace(new RegExp(YEAR_TAG.source, 'g'), '').replace(/^-+|-+$/g, '');
 }
 
-/** Categories, style, year and title a Drive photo gets from its tags. */
-export function fromDrive(d, categories, styles) {
-  const tags = driveTags(d);
-  const takenYear = typeof d.taken === 'string' ? d.taken.match(/^(\d{4})/) : null;
-  const folderYear = tags.map((t) => t.match(YEAR_TAG)).find(Boolean);
-  const titleLine = String(d.description ?? '')
+/**
+ * Categories, style, title and year a photo gets from its keywords and, when it
+ * comes from Drive, its folders and description. Fields photos.yaml sets win.
+ */
+export function fromTags({ keywords = [], drive = null }, categories, styles) {
+  const tags = [...new Set([...keywords.map(tagSlug).filter(Boolean), ...driveTags(drive)])];
+  const folderYear = driveTags(drive).map((t) => t.match(YEAR_TAG)).find(Boolean);
+  const descriptionLine = String(drive?.description ?? '')
     .split('\n')
-    .map((l) => l.replace(/#[\p{L}\p{N}_-]+/gu, '').trim())
+    .map((l) => l.replace(HASHTAG, '').trim())
     .find(Boolean);
-  // Without a description the title is the deepest folder that says more than a
-  // category or style, so "Reizen/Lissabon 2024/Straat" gives "Lissabon 2024".
-  const longest = [...(d.paths ?? [])].sort((a, b) => b.length - a.length)[0] ?? [];
-  const folderTitle =
-    [...longest].reverse().find((f) => leftover(tagSlug(f), categories, styles)) ?? longest[longest.length - 1] ?? null;
+  // The deepest folder that says more than a category or style, so
+  // "Reizen/Lissabon 2024/Straat" gives "Lissabon 2024".
+  const longest = [...(drive?.paths ?? [])].sort((a, b) => b.length - a.length)[0] ?? [];
+  const folderTitle = [...longest].reverse().find((f) => leftover(tagSlug(f), categories, styles)) ?? null;
+  // One style: a specific one beats the default, so "film" plus "colour" gives film.
   const matchedStyles = tagged(tags, styles);
   const defaultStyle = styles.find((s) => s.default)?.id ?? null;
   return {
     tags,
     categories: tagged(tags, categories),
-    style: matchedStyles.find((id) => !defaultStyle || id !== defaultStyle) ?? defaultStyle ?? null,
-    year: takenYear ? Number(takenYear[1]) : folderYear ? Number(folderYear[1]) : null,
-    title: titleLine ?? folderTitle,
+    style: matchedStyles.find((id) => id !== defaultStyle) ?? defaultStyle,
+    title: descriptionLine ?? folderTitle ?? null,
+    year: folderYear ? Number(folderYear[1]) : null,
   };
 }
 
 /** Tags that match no category, style or year, with the number of photos that carry them. */
-function unmatchedTags(driveEntries, categories, styles) {
+function unmatchedTags(tagLists, categories, styles) {
   const counts = new Map();
-  for (const d of driveEntries) {
-    for (const t of driveTags(d)) {
-      const rest = leftover(t, categories, styles);
-      if (rest) counts.set(rest, (counts.get(rest) ?? 0) + 1);
+  for (const tags of tagLists) {
+    for (const rest of new Set(tags.map((t) => leftover(t, categories, styles)).filter(Boolean))) {
+      counts.set(rest, (counts.get(rest) ?? 0) + 1);
     }
   }
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
-async function captureYear(file) {
+const asList = (v) => (Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [v]);
+const asText = (v) => (typeof v === 'string' ? v : typeof v?.value === 'string' ? v.value : Array.isArray(v) ? asText(v[0]) : null);
+
+/** Capture date, keywords and title stored in the file. */
+async function readMeta(file) {
   try {
-    const exif = await exifr.parse(file, { pick: ['DateTimeOriginal', 'CreateDate'], reviveValues: false });
-    const raw = exif?.DateTimeOriginal ?? exif?.CreateDate;
-    const m = typeof raw === 'string' ? raw.match(/^(\d{4})/) : null;
-    return m ? Number(m[1]) : null;
+    const m = await exifr.parse(file, {
+      ifd0: false, ifd1: false, gps: false, interop: false,
+      exif: { pick: ['DateTimeOriginal', 'CreateDate'] },
+      xmp: true,
+      iptc: true,
+      reviveValues: false,
+    });
+    const raw = m?.DateTimeOriginal ?? m?.CreateDate;
+    const taken = typeof raw === 'string' && /^\d{4}/.test(raw) ? raw : null;
+    const keywords = [...new Set([...asList(m?.subject), ...asList(m?.Keywords)].map((k) => String(k).trim()).filter(Boolean))];
+    const title = (asText(m?.title) ?? asText(m?.ObjectName))?.trim() || null;
+    return { taken, year: taken ? Number(taken.slice(0, 4)) : null, keywords, title };
   } catch {
-    return null;
+    return { taken: null, year: null, keywords: [], title: null };
   }
 }
 
@@ -246,6 +263,11 @@ export async function loadContent({ fresh = false } = {}) {
   const listed = new Set();
   const draft = [];
 
+  // Keywords, title and capture date of every photo, read once.
+  const metaByFile = new Map(await Promise.all(onDisk.map(async (f) => [f, await readMeta(path.join(PHOTOS_DIR, f))])));
+  const deriveFor = (f) => fromTags({ keywords: metaByFile.get(f)?.keywords, drive: driveByFile.get(f) }, categories, styles);
+  const whereFrom = (f) => (driveByFile.has(f) ? 'keyword or folder name' : 'keyword');
+
   entries.forEach((e, i) => {
     const where = `photos.yaml entry ${i + 1}${e?.file ? ` (${e.file})` : ''}`;
     if (!e || typeof e.file !== 'string') {
@@ -255,25 +277,23 @@ export async function loadContent({ fresh = false } = {}) {
     listed.add(e.file);
     if (!onDisk.includes(e.file)) errors.push(`${where}: file not found in content/photos/`);
 
-    // A photo from Drive may leave out categories and style: its folder names fill them in.
-    const drive = driveByFile.get(e.file);
-    const derived = drive ? fromDrive(drive, categories, styles) : null;
-    let cats = Array.isArray(e.categories) ? e.categories : e.categories ? [e.categories] : [];
+    // Categories and style left out here come from the photo's keywords and folders.
+    const derived = deriveFor(e.file);
+    const meta = metaByFile.get(e.file);
+    let cats = asList(e.categories);
     for (const c of cats) {
       if (!catIds.includes(c)) {
         const hint = closest(c, catIds);
         errors.push(`${where}: unknown category "${c}"${hint ? `, did you mean "${hint}"?` : ''}`);
       }
     }
-    if (!cats.length && derived) {
+    if (!cats.length) {
       cats = derived.categories.length ? derived.categories : [UNCATEGORIZED.id];
-      if (!derived.categories.length) warnings.push(`${where}: no folder name matches a category, shown under Uncategorized`);
+      if (!derived.categories.length) warnings.push(`${where}: no categories set and no ${whereFrom(e.file)} matches one, shown under Uncategorized`);
     }
-    if (!cats.length) errors.push(`${where}: needs at least one category`);
-    const style = e.style ?? derived?.style ?? null;
-    if (!style) {
-      if (!drive) errors.push(`${where}: missing "style"`);
-    } else if (!styleIds.includes(style)) {
+    const style = e.style ?? derived.style;
+    if (!style) errors.push(`${where}: missing "style" (or mark one style default: true in styles.yaml)`);
+    else if (!styleIds.includes(style)) {
       const hint = closest(style, styleIds);
       errors.push(`${where}: unknown style "${style}"${hint ? `, did you mean "${hint}"?` : ''}`);
     }
@@ -290,7 +310,7 @@ export async function loadContent({ fresh = false } = {}) {
       else errors.push(`${where}: focus must be [x, y] with values from 0 to 1`);
     }
     if (e.year !== undefined && !Number.isInteger(e.year)) errors.push(`${where}: year must be a whole number`);
-    const title = e.title ?? derived?.title;
+    const title = e.title ?? meta?.title ?? derived.title;
     if (!title) warnings.push(`${where}: no title, the file name is used as alt text`);
 
     draft.push({
@@ -299,49 +319,41 @@ export async function loadContent({ fresh = false } = {}) {
       title: title ?? slugify(e.file).replace(/-/g, ' '),
       categories: cats,
       style,
-      year: e.year ?? null,
-      fallbackYear: derived?.year ?? null,
+      year: e.year ?? meta?.year ?? derived.year,
       focus,
-      ...(drive ? { drive: { id: drive.id, tags: derived.tags } } : {}),
+      keywords: meta?.keywords ?? [],
+      tags: derived.tags,
+      ...(driveByFile.has(e.file) ? { drive: { id: driveByFile.get(e.file).id } } : {}),
     });
   });
 
-  // Photos from Drive without an entry in photos.yaml come after the listed ones,
-  // newest first, with categories, style and title taken from their folders.
-  const fromDriveOnly = onDisk
-    .filter((f) => !listed.has(f) && driveByFile.has(f))
-    .map((f) => driveByFile.get(f))
-    .sort((a, b) => String(b.taken ?? '').localeCompare(String(a.taken ?? '')) || a.file.localeCompare(b.file));
-  for (const d of fromDriveOnly) {
-    const derived = fromDrive(d, categories, styles);
-    let slug = slugify(d.file);
+  // Photos without an entry in photos.yaml come after the listed ones, newest first,
+  // with categories, style and title from their keywords (and Drive folders).
+  const rest = onDisk
+    .filter((f) => !listed.has(f))
+    .sort((a, b) => String(metaByFile.get(b)?.taken ?? '').localeCompare(String(metaByFile.get(a)?.taken ?? '')) || a.localeCompare(b));
+  for (const f of rest) {
+    const derived = deriveFor(f);
+    const meta = metaByFile.get(f);
+    let slug = slugify(f);
     while (slugs.has(slug)) slug += '-1';
-    slugs.set(slug, d.file);
-    listed.add(d.file);
-    if (!derived.categories.length) warnings.push(`${d.file} (Drive: ${(d.paths?.[0] ?? []).join('/') || 'top folder'}): no folder name matches a category, shown under Uncategorized`);
+    slugs.set(slug, f);
+    if (!derived.categories.length) warnings.push(`${f}: no ${whereFrom(f)} matches a category, shown under Uncategorized`);
     draft.push({
-      file: d.file,
+      file: f,
       slug,
-      title: derived.title ?? slugify(d.file).replace(/-/g, ' '),
+      title: meta?.title ?? derived.title ?? slugify(f).replace(/-/g, ' '),
       categories: derived.categories.length ? derived.categories : [UNCATEGORIZED.id],
       style: derived.style,
-      year: null,
-      fallbackYear: derived.year,
+      year: meta?.year ?? derived.year,
       focus: [0.5, 0.5],
-      drive: { id: d.id, tags: derived.tags },
+      keywords: meta?.keywords ?? [],
+      tags: derived.tags,
+      ...(driveByFile.has(f) ? { drive: { id: driveByFile.get(f).id } } : {}),
     });
   }
   for (const d of driveByFile.values()) {
     if (!onDisk.includes(d.file)) warnings.push(`drive.yaml lists ${d.file}, but it is not in content/photos/: run "npm run import"`);
-  }
-
-  for (const f of onDisk) {
-    if (listed.has(f)) continue;
-    let slug = slugify(f);
-    while (slugs.has(slug)) slug += '-1';
-    slugs.set(slug, f);
-    warnings.push(`content/photos/${f} has no entry in photos.yaml, shown last under Uncategorized`);
-    draft.push({ file: f, slug, title: slugify(f).replace(/-/g, ' '), categories: [UNCATEGORIZED.id], style: null, year: null, focus: [0.5, 0.5], unlisted: true });
   }
 
   // Git LFS pointer files instead of images mean LFS was not fetched (on Vercel: not enabled).
@@ -361,12 +373,11 @@ export async function loadContent({ fresh = false } = {}) {
     const swap = (meta.orientation ?? 1) >= 5;
     const width = swap ? meta.height : meta.width;
     const height = swap ? meta.width : meta.height;
-    const year = d.year ?? (await captureYear(abs)) ?? d.fallbackYear ?? null;
+    const year = d.year ?? null;
     if (year === null) warnings.push(`${d.file}: no capture date in EXIF and no "year" set, the photo has no year`);
     const hash = await fileHash(abs);
     const { mtimeMs } = await stat(abs);
-    const { fallbackYear, ...rest } = d;
-    const p = { ...rest, abs, width, height, ar: width / height, year, hash, mtimeMs };
+    const p = { ...d, abs, width, height, ar: width / height, year, hash, mtimeMs };
     p.images = imageSet(p);
     photos.push(p);
   }
@@ -380,7 +391,7 @@ export async function loadContent({ fresh = false } = {}) {
     categories: [...categories, UNCATEGORIZED].filter((c) => usedCats.has(c.id)),
     styles: styles.filter((s) => usedStyles.has(s.id)),
     years: years.map((y) => ({ id: y, label: String(y) })),
-    tagReport: { unmatched: unmatchedTags([...driveByFile.values()], categories, styles) },
+    tagReport: { unmatched: unmatchedTags(photos.map((p) => p.tags), categories, styles) },
     warnings,
   };
   return cache;

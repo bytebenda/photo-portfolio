@@ -10,6 +10,11 @@ name: Import photos from Google Drive
 
 on:
   workflow_dispatch:
+    inputs:
+      refresh:
+        description: Download every photo again and keep the changed ones (after adding keywords to photos already in Drive)
+        type: boolean
+        default: false
   push:
     paths:
       - scripts/drive-import.mjs
@@ -41,7 +46,7 @@ jobs:
       - name: Import
         run: |
           npm ci
-          npm run import
+          npm run import -- ${{ inputs.refresh && '--refresh' || '' }}
       - name: Commit
         run: |
           git add content/

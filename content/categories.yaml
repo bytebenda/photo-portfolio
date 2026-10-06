@@ -1,10 +1,13 @@
 # Allowed categories. Order here is the order in the Categories filter.
 # A category shows up in the filter as soon as one photo uses it.
 #
-# match: words in Google Drive folder names (or #hashtags in a Drive description)
-# that give a photo this category. The id and label always match. Words match
-# whole words, without regard to case or accents: "straat" matches the folder
-# "Straat Gent 2025" but not "Straatsburg". A photo can get several categories.
+# A photo gets every category whose words appear in its keywords (set in
+# Lightroom, Capture One or the Fujifilm app and stored in the file), its Google
+# Drive folder names or #hashtags in its Drive description. photos.yaml overrides.
+#
+# match: extra words for this category; the id and label always match. Words
+# match as whole words, without regard to case or accents: the keyword "Straat"
+# matches street, "Straatsburg" does not.
 - id: street
   label: Street
   match: [straat, straatfotografie, streetphotography]

@@ -1,7 +1,7 @@
 // npm run import: copies every photo in a Google Drive folder, including all
 // subfolders at any depth, into content/photos/ and records where each one came
-// from in content/drive.yaml. The folder names become the photo's tags, which
-// content.mjs turns into categories, style and year (see categories.yaml and
+// from in content/drive.yaml. The keywords stored in each photo, plus the folder
+// names, decide its categories and style (see content.mjs, categories.yaml and
 // styles.yaml, field "match").
 //
 // The folder comes from DRIVE_FOLDER (an ID or a folder URL) or driveFolder in
@@ -16,11 +16,12 @@
 //
 // Unchanged files are skipped, files that were removed from Drive are removed
 // from content/photos/. With an API key or service account a file changed in
-// Drive is downloaded again (Drive's MD5 checksum); without one it is not, because
-// the public pages give no checksum. Photos you added to content/photos/ yourself
-// are never touched.
+// Drive is downloaded again (Drive's MD5 checksum); without one only with
+// --refresh, because the public pages give no checksum. --refresh downloads every
+// photo again and keeps the ones whose content changed, for example after adding
+// keywords. Photos you added to content/photos/ yourself are never touched.
 //
-//   node scripts/drive-import.mjs [--dry-run]
+//   node scripts/drive-import.mjs [--dry-run] [--refresh]
 import { readFile, writeFile, rename, unlink, access, mkdir } from 'node:fs/promises';
 import { createHash, createSign } from 'node:crypto';
 import path from 'node:path';
@@ -31,6 +32,7 @@ import { CONTENT_DIR, PHOTOS_DIR, slugify, loadContent, ContentError } from '../
 const API = 'https://www.googleapis.com/drive/v3';
 const MANIFEST = path.join(CONTENT_DIR, 'drive.yaml');
 const DRY_RUN = process.argv.includes('--dry-run');
+const REFRESH = process.argv.includes('--refresh');
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 // Formats sharp can read with its prebuilt binaries. HEIC and camera RAW files are skipped.
@@ -244,16 +246,17 @@ const prevById = new Map(previous.map((m) => [m.id, m]));
 
 // The public pages give no checksum. Photos imported before keep the checksum
 // they had; new ones are downloaded first, so duplicates can still be found.
+// With --refresh every photo is downloaded, so changed ones get a new checksum.
 const staged = new Map();
 if (LINK_MODE && !DRY_RUN) {
   await mkdir(PHOTOS_DIR, { recursive: true });
   const fresh = [];
   for (const img of images) {
     const prev = prevById.get(img.id);
-    if (prev && (await exists(path.join(PHOTOS_DIR, prev.file)))) img.md5Checksum = prev.md5;
+    if (!REFRESH && prev && (await exists(path.join(PHOTOS_DIR, prev.file)))) img.md5Checksum = prev.md5;
     else fresh.push(img);
   }
-  if (fresh.length) console.log(`drive-import: downloading ${fresh.length} new photos`);
+  if (fresh.length) console.log(`drive-import: downloading ${fresh.length} ${REFRESH ? 'photos to compare' : 'new photos'}`);
   let done = 0;
   const queue = [...fresh];
   await Promise.all(
@@ -360,9 +363,10 @@ if (!DRY_RUN) {
     const { photos, tagReport } = await loadContent({ fresh: true });
     const fromDrive = photos.filter((p) => p.drive);
     const noCat = fromDrive.filter((p) => p.categories.includes('uncategorized'));
-    console.log(`drive-import: ${fromDrive.length - noCat.length} of ${fromDrive.length} Drive photos have a category`);
+    const withKeywords = fromDrive.filter((p) => p.keywords.length).length;
+    console.log(`drive-import: ${fromDrive.length - noCat.length} of ${fromDrive.length} Drive photos have a category, ${withKeywords} have keywords`);
     if (tagReport.unmatched.length) {
-      console.log('drive-import: words in folder names that match no category or style (add them to "match" in categories.yaml or styles.yaml, or ignore them):');
+      console.log('drive-import: keywords and folder words that match no category or style (add them to "match" in categories.yaml or styles.yaml, or ignore them):');
       for (const [tag, n] of tagReport.unmatched) console.log(`  ${tag} (${n} ${n === 1 ? 'photo' : 'photos'})`);
     }
   } catch (e) {
