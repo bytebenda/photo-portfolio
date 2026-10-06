@@ -40,7 +40,7 @@ const FOV = 30;
 // Timeline, as shares of p. Unrolling runs over [0, UNROLL]. Copies leave
 // between COPY_START and COPY_START + COPY_SPREAD; primaries start between
 // FLY_START and FLY_START + FLY_SPREAD (centre of the screen first) and take
-// FLY_TIME, so the last one lands at 0.94, before the crossfade to the grid.
+// FLY_TIME, so the last one lands at 0.90, before the crossfade to the grid.
 const UNROLL = 0.6;
 
 const vertexShader = /* glsl */ `
@@ -125,7 +125,7 @@ const vertexShader = /* glsl */ `
 
     // Each tile has its own window on the timeline.
     float primary = aTarget.w;
-    float start = mix(0.24 + aOrder * 0.14, 0.30 + aOrder * 0.26, primary);
+    float start = mix(0.24 + aOrder * 0.14, 0.28 + aOrder * 0.24, primary);
     float q = clamp((uP - start) / mix(0.3, 0.38, primary), 0.0, 1.0);
     float qe = smoother(q);
     float arc = sin(q * PI);

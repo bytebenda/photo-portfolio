@@ -58,14 +58,18 @@ function start() {
   }
 
   // The canvas stays until the drawn progress has landed, even when a fast swipe
-  // is already past the hero; over the last 6% it crossfades into the grid.
+  // is already past the hero. Once every tile has landed (0.9) it fades out over
+  // the real grid, which is fully there underneath, by 0.96.
   function sync() {
     const p = progress();
     if (!globe) shown = p;
     const at = Math.min(p, shown);
     root.classList.toggle('hero-on', at < 1);
+    // The Filter button comes in when the gallery is nearly there, not only once
+    // the scroll is fully past the hero.
+    root.classList.toggle('hero-filter', at >= 0.9);
     root.style.setProperty('--hero-p', at.toFixed(4));
-    root.style.setProperty('--hero-x', smooth(clamp((shown - 0.94) / 0.06)).toFixed(4));
+    root.style.setProperty('--hero-x', smooth(clamp((shown - 0.9) / 0.06)).toFixed(4));
     canvas.style.pointerEvents = p < 0.1 ? 'auto' : 'none';
     return p;
   }
@@ -124,7 +128,7 @@ function start() {
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
     const flight = clamp((d - 0.15) / 0.75);
     let bloom = (0.12 * (1 - smooth(clamp(d / 0.6))) + 0.3 * Math.sin(Math.PI * flight)) * (moving ? 1 : 0.5);
-    if (d >= 0.9 || !glow) bloom = 0;
+    if (d >= 0.88 || !glow) bloom = 0;
     // The glow is the only costly part; drop it if frames take longer than ~30 ms.
     if (bloom > 0 && intro >= 1) {
       slow = dt > 0.034 ? slow + 1 : Math.max(0, slow - 1);

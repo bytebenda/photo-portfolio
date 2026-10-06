@@ -628,7 +628,11 @@ export async function loadContent({ fresh = false } = {}) {
 
   cache = {
     photos,
-    categories: [...categories, UNCATEGORIZED].filter((c) => usedCats.has(c.id)),
+    // Alphabetical in the filter, Uncategorized last.
+    categories: [
+      ...categories.filter((c) => usedCats.has(c.id)).sort((a, b) => a.label.localeCompare(b.label)),
+      ...(usedCats.has(UNCATEGORIZED.id) ? [UNCATEGORIZED] : []),
+    ],
     styles: styles.filter((s) => usedStyles.has(s.id)),
     years: years.map((y) => ({ id: y, label: String(y) })),
     locations: locationTree(photoLocations),

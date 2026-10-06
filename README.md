@@ -1,4 +1,4 @@
-# Dieter photography portfolio
+# Dieter's portfolio
 
 A static photography portfolio: a square grid on black, one Filter button for location, category, year and style, and a fullscreen photo view. Built with Astro and sharp in GitHub Actions, hosted on Vercel.
 
@@ -43,6 +43,8 @@ Access is one environment variable, or none:
 In the workflow, add the variable above as a repository secret when you use one.
 
 ### Filters from keywords
+
+The Categories filter lists categories alphabetically, with Uncategorized last.
 
 The filters follow the keywords in your photos. Give a photo its categories and its type (the Style filter) as keywords in your photo editor before you upload it to Drive. The keywords are stored inside the JPEG, so they count whatever folder the photo is in. Every new keyword becomes a filter option at the next import; nothing needs to be listed first. A photo can have several categories and has exactly one type.
 
