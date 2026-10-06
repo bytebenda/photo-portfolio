@@ -342,7 +342,7 @@ if (!DRY_RUN) {
     '',
   ].join('\n');
   // One line per photo for the folder paths: paths: [[Reizen, Lissabon 2024], [Favorieten]]
-  const doc = new YAML.Document(next);
+  const doc = new YAML.Document(next, { aliasDuplicateObjects: false });
   YAML.visit(doc, { Pair: (_, pair) => void (pair.key?.value === 'paths' && (pair.value.flow = true)) });
   await writeFile(MANIFEST, header + doc.toString());
 }
