@@ -17,7 +17,6 @@ import {
   Mesh,
   PerspectiveCamera,
   PlaneGeometry,
-  Quaternion,
   Scene,
   ShaderMaterial,
   Vector2,
@@ -31,7 +30,7 @@ export type Target = { x: number; y: number; size: number; order: number } | nul
 export type Frame = {
   p: number; // 0 globe, 1 every tile on its grid square
   vel: number; // speed of p per second, for the motion stretch
-  rot: number; // turn around the vertical axis inside the shader, radians (used once upright)
+  rot: number; // turn along the rows inside the shader, radians (0 while the ball rolls freely)
   quat: [number, number, number, number]; // orientation of the rolling ball
   upright: boolean; // the ball is back to its shader turn only, ready to unroll
   ballX: number; // sideways position of the ball in pixels
@@ -66,11 +65,8 @@ const UNROLL = 0.6;
 
 const vertexShader = /* glsl */ `
   #define PI 3.141592653589793
-  attribute vec4 aGeo;      // centre theta, centre phi, unused, photo index
-  attribute vec3 aN;        // cube face normal
-  attribute vec3 aU;        // cube face axes
-  attribute vec3 aV;
-  attribute vec3 aIJ;       // tile column, row and tiles per face side
+  attribute vec4 aGeo;      // centre theta, centre phi, width (radius for a cap), photo index
+  attribute vec2 aBand;     // band height, kind: 0 band tile, 1 or -1 pole cap
   attribute vec2 aCell;     // atlas cell origin (uv)
   attribute vec4 aTarget;   // grid square: x, y, size, 1 for a primary with a visible square
   attribute float aOrder;   // start of the flight within its window, 0 to 1
@@ -106,7 +102,7 @@ const vertexShader = /* glsl */ `
       y = sin(a * k) / k;
       rr = uR - 2.0 * h * h / k;
     }
-    float c = max(cos(ph), 0.04);
+    float c = max(cos(ph), 1e-4);
     float s = th * uR * c;
     float l = (1.0 - u) / (uR * c);
     float x = s;
@@ -124,12 +120,10 @@ const vertexShader = /* glsl */ `
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
   }
 
-  // A point of this tile on the unit sphere: the cube face grid, spread with
-  // equal angles so the tiles are close to the same size, then normalised.
-  vec3 cubeDir(vec2 p) {
-    vec2 ab = (aIJ.xy + 0.5 + p) / aIJ.z * 2.0 - 1.0;
-    ab = tan(ab * PI * 0.25);
-    return normalize(aN + ab.x * aU + ab.y * aV);
+  // The ball is laid out with its poles on the y axis and shown with them on
+  // the x axis, so it rolls forward along its rows of photos.
+  vec3 toView(vec3 v) {
+    return vec3(v.y, -v.x, v.z);
   }
 
   vec3 rotateAround(vec3 v, vec3 axis, float a) {
@@ -146,23 +140,38 @@ const vertexShader = /* glsl */ `
     float seam = 1.0 - abs(th) / PI;
     float u = smoother(uP / ${UNROLL.toFixed(2)} * 1.3 - seam * 0.3);
 
+    // This corner of the tile. Band tiles span their own stretch of longitude
+    // and latitude, so neighbours share edges exactly. A pole cap is the square
+    // mapped onto a disc around the pole.
+    float kind = aBand.y;
+    float thv;
+    float phv;
+    if (kind == 0.0) {
+      thv = th + position.x * aGeo.z;
+      phv = ph + position.y * aBand.x;
+    } else {
+      vec2 sq = position.xy * 2.0;
+      vec2 d = vec2(sq.x * sqrt(1.0 - sq.y * sq.y * 0.5), sq.y * sqrt(1.0 - sq.x * sq.x * 0.5));
+      thv = th + atan(d.y, d.x + 1e-6);
+      // Slightly past the cap edge, so its straight segments close against the band.
+      phv = kind * (PI * 0.5 - aGeo.z * length(d) * 1.02);
+    }
+
     vec3 c = surface(th, ph, u);
     // An orthonormal frame, so tiles stay square while the surface bends.
     vec3 east = normalize(surface(th + 0.002, ph, u) - c);
-    vec3 n = normalize(cross(east, surface(th, ph + 0.002, u) - c));
-    vec3 north = cross(n, east);
+    vec3 nTile = normalize(cross(east, surface(th, ph + 0.002, u) - c));
+    vec3 nv = normalize(surface(thv, phv, 0.0));
+    vec3 local0 = surface(thv, phv, u) - c;
+    if (kind != 0.0) local0 -= nv * 0.6; // just inside the band tiles, so they win where they meet
+    // Smooth shading: on the ball each corner takes the sphere's own normal.
+    vec3 n = toView(normalize(mix(nv, nTile, u)));
+    c = toView(c);
 
     float intro = mix(0.9, 1.0, uIntro);
     vec3 c1 = c * intro;
     c1.y += uCenterY;
-    // Each corner sits on the surface itself, so neighbouring tiles share their
-    // edges exactly: no gaps on the ball, none in the sheet. Longitude is taken
-    // relative to the tile centre, so a tile on the seam is not torn apart.
-    vec3 dv = cubeDir(position.xy);
-    float phv = asin(clamp(dv.y, -1.0, 1.0));
-    float dth = mod(atan(dv.x, dv.z) - aGeo.x + PI, 2.0 * PI) - PI;
-    if (cos(phv) < 1e-3) dth = 0.0;
-    vec3 local1 = (surface(th + dth, phv, u) - c) * intro;
+    vec3 local1 = toView(local0) * intro;
 
     // Each tile has its own window on the timeline.
     float primary = aTarget.w;
@@ -178,7 +187,8 @@ const vertexShader = /* glsl */ `
       vec3 ctrl = mix(c1, c2, 0.5) + vec3(0.0, 0.0, uLift);
       vec3 centre = mix(mix(c1, ctrl, qe), mix(ctrl, c2, qe), qe);
       vec3 tangent = normalize(mix(ctrl - c1, c2 - ctrl, qe) + vec3(1e-4));
-      vec3 local = mix(local1, vec3(position.xy * aTarget.z, 0.0), qe);
+      // On the ball a photo's top points along its row; on the grid it is upright.
+      vec3 local = mix(local1, vec3(position.y, -position.x, 0.0) * aTarget.z, qe);
       // A slight turn in flight around a per-photo axis, flat again on landing.
       float a = photo * 2.39996;
       vec3 axis = normalize(vec3(cos(a), sin(a), 0.0));
@@ -205,13 +215,16 @@ const vertexShader = /* glsl */ `
     float lit = facing < 0.0 ? 0.18 + 0.12 * depth : mix(0.32, 1.0, key) * mix(0.55, 1.0, depth);
     vLight = mix(lit, 1.0, max(u, qe * primary));
     vAlpha = uIntro * (1.0 - qe * (1.0 - primary));
+    // The pole caps go before the sheet opens; they would tear.
+    if (kind != 0.0) vAlpha *= 1.0 - smoothstep(0.02, 0.1, uP);
     // Depth blur: the far side of the globe and receding copies go soft.
     vBlur = (1.0 - u) * (1.0 - depth) * 2.5 + qe * (1.0 - primary) * 4.0;
     vRim = arc * primary * uFx;
     vPhoto = photo;
     vFacing = facing;
 
-    vUv = uv;
+    // Image top along -theta, which is up on screen while the ball rolls.
+    vUv = vec2(position.y + 0.5, position.x + 0.5);
     vCell = aCell;
   }
 `;
@@ -230,7 +243,7 @@ const fragmentShader = /* glsl */ `
   void main() {
     if (vAlpha < 0.004) discard;
     vec2 uv = vCell + uInset + vUv * (uCellSize - 2.0 * uInset);
-    vec3 col = texture2D(uMap, uv, vBlur).rgb * vLight;
+    vec3 col = texture2D(uMap, uv, min(vBlur, 3.0)).rgb * vLight;
     // A thin light edge on tiles in flight.
     float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
     col += vec3(0.75, 0.85, 1.0) * (1.0 - smoothstep(0.0, 0.035, edge)) * vRim * 0.35;
@@ -369,6 +382,13 @@ async function loadAtlas(urls: string[], cell: number) {
   return { texture, cols, rows, size };
 }
 
+// A fixed pseudo-random offset per row, so the tile edges of neighbouring
+// rows do not line up into long seams.
+const random0 = (k: number) => {
+  const x = Math.sin(k * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
 export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], count: number, cell: number, fx: boolean) {
   const n = thumbs.length;
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
@@ -382,20 +402,29 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   const scene = new Scene();
   const camera = new PerspectiveCamera(FOV, 1, 1, 10000);
 
-  // Tiles on a cube sphere: each face of a cube split into a grid and puffed
-  // out into a ball, so the tiles close up without gaps and there are no
-  // pinched poles when the ball rolls. Every run of n tiles holds each photo
-  // once, in a shuffled order so copies do not line up.
-  const N = Math.max(2, Math.round(Math.sqrt(count / 6)), Math.ceil(Math.sqrt(n / 6)));
-  const faces: [number[], number[], number[]][] = [
-    [[0, 0, 1], [1, 0, 0], [0, 1, 0]], // front
-    [[1, 0, 0], [0, 0, -1], [0, 1, 0]], // right
-    [[0, 0, -1], [-1, 0, 0], [0, 1, 0]], // back
-    [[-1, 0, 0], [0, 0, 1], [0, 1, 0]], // left
-    [[0, 1, 0], [1, 0, 0], [0, 0, -1]], // top
-    [[0, -1, 0], [1, 0, 0], [0, 0, 1]], // bottom
-  ];
-  const total = 6 * N * N;
+  // Tiles in rows of latitude, edge to edge: every row is split into tiles of
+  // exactly equal width, close to square, and rows share their edges, so the
+  // surface is closed. A round photo covers each pole. Every run of n tiles
+  // holds each photo once, in a shuffled order so copies do not line up.
+  type Tile = { th: number; ph: number; w: number; h: number; kind: number };
+  let tiles: Tile[] = [];
+  let hB = 0;
+  for (let k = 0, sTile = Math.sqrt((4 * Math.PI) / Math.max(count, n)); tiles.length < n + 2 || k === 0; k++, sTile *= 0.94) {
+    const cap = 0.6 * sTile;
+    const B = Math.max(2, Math.round((Math.PI - 2 * cap) / sTile));
+    hB = (Math.PI - 2 * cap) / B;
+    tiles = [
+      { th: 0, ph: Math.PI / 2 - cap, w: cap, h: hB, kind: 1 },
+      { th: 0, ph: -(Math.PI / 2 - cap), w: cap, h: hB, kind: -1 },
+    ];
+    for (let b = 0; b < B; b++) {
+      const ph = -Math.PI / 2 + cap + (b + 0.5) * hB;
+      const m = Math.max(3, Math.round((2 * Math.PI * Math.cos(ph)) / hB));
+      const shift = random0(b) * 2 * Math.PI;
+      for (let j = 0; j < m; j++) tiles.push({ th: shift + ((j + 0.5) * 2 * Math.PI) / m, ph, w: (2 * Math.PI) / m, h: hB, kind: 0 });
+    }
+  }
+  const total = tiles.length;
   let seed = 7;
   const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
   const assign: number[] = [];
@@ -409,30 +438,19 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   }
 
   const geo = new Float32Array(total * 4);
-  const axN = new Float32Array(total * 3);
-  const axU = new Float32Array(total * 3);
-  const axV = new Float32Array(total * 3);
-  const ij = new Float32Array(total * 3);
+  const band = new Float32Array(total * 2);
   const dirs = new Float32Array(total * 3); // tile centres on the unit sphere
   const cells = new Float32Array(total * 2);
   const targets = new Float32Array(total * 4);
   const order = new Float32Array(total);
   for (let i = 0; i < total; i++) {
-    const [fn, fu, fv] = faces[Math.floor(i / (N * N))];
-    const col = i % N;
-    const row = Math.floor(i / N) % N;
-    const a = Math.tan((((col + 0.5) / N) * 2 - 1) * (Math.PI / 4));
-    const b = Math.tan((((row + 0.5) / N) * 2 - 1) * (Math.PI / 4));
-    const d = [0, 1, 2].map((k) => fn[k] + a * fu[k] + b * fv[k]);
-    const len = Math.hypot(d[0], d[1], d[2]);
-    const dir = d.map((v) => v / len);
-    dirs.set(dir, i * 3);
-    axN.set(fn, i * 3);
-    axU.set(fu, i * 3);
-    axV.set(fv, i * 3);
-    ij.set([col, row, N], i * 3);
+    const t = tiles[i];
+    const th = (((t.th + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    const ph = t.kind ? t.kind * (Math.PI / 2) : t.ph;
+    dirs.set([Math.sin(th) * Math.cos(ph), Math.sin(ph), Math.cos(th) * Math.cos(ph)], i * 3);
+    band.set([t.h, t.kind], i * 2);
     const photo = assign[i];
-    geo.set([Math.atan2(dir[0], dir[2]), Math.asin(dir[1]), 0, photo], i * 4);
+    geo.set([th, t.ph, t.w, photo], i * 4);
     cells.set([(photo % atlas.cols) / atlas.cols, Math.floor(photo / atlas.cols) / atlas.rows], i * 2);
     order[i] = random();
   }
@@ -447,10 +465,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   const copyOrder = order.slice();
   const aOrder = new InstancedBufferAttribute(order, 1);
   geometry.setAttribute('aGeo', aGeo);
-  geometry.setAttribute('aN', new InstancedBufferAttribute(axN, 3));
-  geometry.setAttribute('aU', new InstancedBufferAttribute(axU, 3));
-  geometry.setAttribute('aV', new InstancedBufferAttribute(axV, 3));
-  geometry.setAttribute('aIJ', new InstancedBufferAttribute(ij, 3));
+  geometry.setAttribute('aBand', new InstancedBufferAttribute(band, 2));
   geometry.setAttribute('aCell', new InstancedBufferAttribute(cells, 2));
   geometry.setAttribute('aTarget', aTarget);
   geometry.setAttribute('aOrder', aOrder);
@@ -459,7 +474,9 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   const uniforms = {
     uMap: { value: atlas.texture },
     uCellSize: { value: [1 / atlas.cols, 1 / atlas.rows] },
-    uInset: { value: [1 / (atlas.cols * atlas.size), 1 / (atlas.rows * atlas.size)] },
+    // 3% of each cell is left out, so neighbouring photos in the atlas never
+    // bleed into a tile at the smaller mip levels.
+    uInset: { value: [0.03 / atlas.cols, 0.03 / atlas.rows] },
     uR: { value: 300 },
     uRot: { value: 0 },
     uP: { value: 0 },
@@ -527,10 +544,9 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
 
   // The mix of the photos facing the viewer, left half and right half, made a
   // little more colourful and kept at one brightness, eased over about a second.
-  const turn = new Quaternion();
+  const yAxis = new Vector3(0, 1, 0);
   const facing = new Vector3();
   function updateGlow(rot: number) {
-    turn.setFromAxisAngle(new Vector3(0, 1, 0), rot).premultiply(mesh.quaternion);
     const now = performance.now();
     const dt = glowT ? Math.min(0.1, (now - glowT) / 1000) : 1;
     glowT = now;
@@ -539,7 +555,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     const best = [-1, -1];
     const score = [0, 0];
     for (let i = 0; i < total; i++) {
-      facing.set(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]).applyQuaternion(turn);
+      facing.set(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]).applyAxisAngle(yAxis, rot);
+      facing.set(facing.y, -facing.x, facing.z).applyQuaternion(mesh.quaternion); // as toView() in the shader
       const z = facing.z;
       if (z <= 0.2) continue;
       const x = facing.x;
@@ -635,6 +652,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     const best: number[] = new Array(n).fill(-1);
     const score: number[] = new Array(n).fill(Infinity);
     for (let i = 0; i < total; i++) {
+      if (band[i * 2 + 1] !== 0) continue; // never a pole cap
       const th = ((((geo[i * 4] + rot + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
       const s = Math.abs(th) + Math.abs(geo[i * 4 + 1]) * 0.8;
       const photo = geo[i * 4 + 3];
@@ -667,7 +685,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uniforms.uIntro.value = f.intro;
     backdrop.visible = f.backdrop > 0.002;
     if (backdrop.visible) {
-      updateGlow(f.upright ? f.rot : 0);
+      updateGlow(f.rot);
       backdropUniforms.uAmount.value = f.backdrop;
       backdropUniforms.uTime.value = f.time % 1000;
       backdropUniforms.uCenterY.value = f.centerY;
@@ -680,7 +698,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     // While the ball rolls it turns around its own centre, so the centre offset
     // lives in the group; once upright the shader takes it over, which is where
     // the flight targets expect it.
-    uniforms.uRot.value = f.upright ? f.rot : 0;
+    uniforms.uRot.value = f.rot;
     uniforms.uCenterY.value = f.upright ? f.centerY : 0;
     mesh.quaternion.set(...f.quat);
     ball.position.set(f.ballX, f.offsetY + (f.upright ? 0 : f.centerY), 0);
@@ -722,7 +740,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     }
     if (photo < 0) return null;
     const z = camera.position.z;
-    const side = (uniforms.uR.value * Math.PI) / (2 * N);
+    const side = uniforms.uR.value * hB;
     return { photo, size: (side * z) / Math.max(1, z - uniforms.uR.value) };
   }
 

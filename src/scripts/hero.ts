@@ -19,7 +19,7 @@ function start() {
 
   if (!data.photos?.length) return stop();
 
-  const ROLL = (2 * Math.PI) / 40; // rolls forward one turn per 40 seconds
+  const ROLL = (2 * Math.PI) / 12; // rolls forward one turn per 12 seconds
   const SPRING = 10; // rad/s; the shown progress trails the scroll by a few hundred ms
   const MAX_SPEED = 1.6; // progress per second: a full swipe still takes at least 0.6 s
 
@@ -211,16 +211,16 @@ function start() {
     ballX = nextX;
 
     // The drop-in flips the ball forward three times. To unroll, the ball comes
-    // upright over the first bit of the scroll: it keeps only its turn around
-    // the vertical axis, which the shader takes over, so the seam is at the back.
+    // back over the first bit of the scroll to rolling straight forward only:
+    // a turn around x, along its rows, which the shader takes over.
     const shownQ = turn(orient, -1, 0, 0, pose.spin);
     const upright = smooth(clamp(d / 0.08));
-    const yaw = 2 * Math.atan2(shownQ[1], shownQ[3]);
-    const standing = normal([0, shownQ[1], 0, shownQ[3]]);
+    const along = Math.hypot(shownQ[0], shownQ[3]) < 1e-3 ? 0 : 2 * Math.atan2(shownQ[0], shownQ[3]);
+    const standing: Quat = [Math.sin(along / 2), 0, 0, Math.cos(along / 2)];
     const isUpright = upright >= 1;
     if (isUpright && introT >= INTRO) orient = standing;
 
-    if (d < 0.2) globe.pickPrimaries(isUpright ? yaw : 0);
+    if (d < 0.2) globe.pickPrimaries(isUpright ? along : 0);
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
 
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
@@ -246,7 +246,7 @@ function start() {
       shadowY: pose.y * rest,
       shadowScale: 1 + (pose.sx - 1) * rest,
       vel: Math.abs(shownV),
-      rot: yaw,
+      rot: isUpright ? along : 0,
       quat: isUpright ? [0, 0, 0, 1] : slerp(shownQ, standing, upright),
       upright: isUpright,
       ballX: ballX * (1 - upright),
