@@ -147,7 +147,7 @@ function start() {
   // the flames while spinning faster and faster, waits out of sight, and comes
   // back with the drop-in's fall and bounces, raising dust at each impact.
   const LIFT = 0.55;
-  const HANG = 0.35;
+  const HANG = 0.8; // out of view until the flames (1.35 s at most) are gone
   const LAUNCH = LIFT + HANG + INTRO;
   const IMPACTS = [
     [LIFT + HANG + FALL, 1],

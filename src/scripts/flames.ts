@@ -16,8 +16,9 @@ button?.addEventListener('click', () => {
   for (let i = 0; i < (still ? 14 : 48); i++) {
     const flame = document.createElement('span');
     flame.textContent = '\u{1F525}';
-    const dur = rand(1.6, 3);
-    const delay = rand(0, 0.7);
+    // Fast, so all flames are gone (1.35 s at most) before the ball falls back.
+    const dur = rand(0.8, 1.15);
+    const delay = rand(0, 0.2);
     longest = Math.max(longest, dur + delay);
     flame.style.setProperty('--x', `${rand(-2, 98).toFixed(1)}%`);
     flame.style.setProperty('--y', `${rand(5, 85).toFixed(1)}%`);
