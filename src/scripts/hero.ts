@@ -10,6 +10,7 @@ function start() {
   const hero = document.getElementById('hero')!;
   const canvas = document.getElementById('hero-canvas') as HTMLCanvasElement;
   const hint = document.getElementById('hero-hint')!;
+  const pauseBtn = document.getElementById('hero-pause') as HTMLButtonElement;
   const tiles = Array.from(document.querySelectorAll<HTMLElement>('#grid .tile'));
   const grid = document.getElementById('grid')!;
   const glowEl = hero.querySelector<HTMLElement>('.hero-glow')!;
@@ -35,9 +36,14 @@ function start() {
   let lastP = 0;
   let ballX = 0; // sideways position, pixels, following the cursor
   let ballTarget = 0;
-  let spinV = 0; // momentum from a drag, rad/s
+  let spinV = 0; // momentum from a drag around the vertical axis, rad/s
+  let spinH = 0; // and around the horizontal axis
+  let paused = false; // the pause button: no rolling, the ball stays where you leave it
   let dragging = false;
   let dragX = 0;
+  let dragY = 0;
+  let swiping = false;
+  let dragH = 0;
   let dragT = 0;
   let dragV = 0;
   let downX = 0;
@@ -153,6 +159,8 @@ function start() {
     setStyle(canvas, 'opacity', (1 - x).toFixed(3));
     setStyle(glowEl, 'opacity', Math.max(0, 1 - at * 1.6).toFixed(3));
     setStyle(hint, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
+    setStyle(pauseBtn, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
+    setStyle(pauseBtn, 'pointerEvents', at < 0.1 ? 'auto' : 'none');
     setStyle(grid, 'opacity', at < 1 ? Math.min(1, x * 50).toFixed(3) : '');
     setStyle(canvas, 'pointerEvents', p < 0.1 ? 'auto' : 'none');
     return p;
@@ -217,9 +225,13 @@ function start() {
     const r = radius(w, h);
     if (!dragging) {
       spinV *= Math.exp(-dt * 2.2);
+      spinH *= Math.exp(-dt * 2.2);
+      if (Math.abs(spinV) < 1e-3) spinV = 0;
+      if (Math.abs(spinH) < 1e-3) spinH = 0;
       if (spinV) orient = turn(orient, 0, 1, 0, spinV * free * dt);
+      if (spinH) orient = turn(orient, 1, 0, 0, spinH * free * dt);
     }
-    if (moving && intro >= 1) {
+    if (moving && intro >= 1 && !paused) {
       const a = ROLL * free * dt;
       // Towards the viewer: the top comes forward and the floor runs away
       // under the ball, the same way the page moves when scrolling down.
@@ -229,13 +241,15 @@ function start() {
     // Scrolling down flicks the ball into a faster roll that fades over about
     // two seconds. It is gone by 20% of the scroll, before the ball opens, and
     // scrolling up gives no kick, so that animation stays as it was.
-    if (moving && intro >= 1 && p > lastP) scrollSpin = Math.min(12, scrollSpin + (p - lastP) * 30);
+    if (moving && intro >= 1 && !paused && p > lastP) scrollSpin = Math.min(12, scrollSpin + (p - lastP) * 30);
     lastP = p;
     scrollSpin *= Math.exp(-dt * 1.2);
     const spinRoom = 1 - smooth(clamp(d / 0.2));
     if (scrollSpin > 1e-3 && spinRoom > 0) orient = turn(orient, 1, 0, 0, scrollSpin * dt * spinRoom);
     const reach = Math.max(0, w / 2 - r - 24);
-    const nextX = ballX + (clamp(ballTarget, -1, 1) * reach * free - ballX) * Math.min(1, dt * 2.5);
+    // Paused, the ball stays where it is instead of following the cursor.
+    const goal = paused ? ballX * free : clamp(ballTarget, -1, 1) * reach * free;
+    const nextX = ballX + (goal - ballX) * Math.min(1, dt * 2.5);
     if (nextX !== ballX) orient = turn(orient, 0, 0, -1, (nextX - ballX) / r);
     ballX = nextX;
 
@@ -272,7 +286,7 @@ function start() {
 
     // Floor and glow behind the globe: there before the globe lands, sunk and
     // gone early in the scroll. Reduce Motion keeps them still.
-    if (moving) backdropT += dt;
+    if (moving && !paused) backdropT += dt;
     const backdrop = smooth(clamp(introT / 0.35)) * (1 - smooth(clamp(d / 0.3)));
 
     globe.render({
@@ -298,8 +312,9 @@ function start() {
     });
 
     // Nothing to draw behind the open viewer.
-    const busy = moving && Math.min(p, shown) < 1 && !document.hidden && !root.classList.contains('viewer-open');
-    if (busy || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
+    const busy = moving && !paused && Math.min(p, shown) < 1 && !document.hidden && !root.classList.contains('viewer-open');
+    const coasting = spinV !== 0 || spinH !== 0 || scrollSpin > 1e-3;
+    if (busy || coasting || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
   }
 
   // A grid square in viewport pixels, and when its photo leaves: by distance
@@ -359,6 +374,15 @@ function start() {
   });
   document.addEventListener('viewer:closed', kick);
 
+  pauseBtn.addEventListener('click', () => {
+    paused = !paused;
+    pauseBtn.setAttribute('aria-pressed', String(paused));
+    pauseBtn.setAttribute('aria-label', paused ? 'Play the globe' : 'Pause the globe');
+    canvas.classList.toggle('is-paused', paused);
+    if (paused) scrollSpin = 0;
+    kick();
+  });
+
   hint.addEventListener('click', (e) => {
     e.preventDefault();
     window.scrollTo({ top: heroH, behavior: still() ? 'auto' : 'smooth' });
@@ -367,11 +391,20 @@ function start() {
   // Drag or swipe sideways to spin; vertical swipes still scroll (touch-action: pan-y).
   canvas.addEventListener('pointerdown', (e) => {
     if (progress() >= 0.1) return;
+    // Paused on a touch screen the canvas no longer scrolls by itself; a swipe
+    // that starts beside the ball still scrolls the page.
+    const r0 = radius(canvas.clientWidth, canvas.clientHeight);
+    const cx = canvas.clientWidth / 2 + ballX;
+    const cy = canvas.clientHeight / 2 + 32;
+    swiping = paused && e.pointerType === 'touch' && Math.hypot(e.clientX - cx, e.clientY - cy) > r0 * 1.05;
     dragging = true;
     dragX = e.clientX;
+    dragY = e.clientY;
     dragT = performance.now();
     dragV = 0;
+    dragH = 0;
     spinV = 0;
+    spinH = 0;
     downX = e.clientX;
     downY = e.clientY;
     downT = dragT;
@@ -384,23 +417,40 @@ function start() {
       hover(e);
       return;
     }
+    if (swiping) {
+      window.scrollBy(0, dragY - e.clientY);
+      dragX = e.clientX;
+      dragY = e.clientY;
+      return;
+    }
     const now = performance.now();
     const r = radius(canvas.clientWidth, canvas.clientHeight);
-    const d = (e.clientX - dragX) / r;
-    orient = turn(orient, 0, 1, 0, d);
-    dragV = d / Math.max(0.008, (now - dragT) / 1000);
+    // Sideways turns the ball around its vertical axis, up and down around its
+    // horizontal one, so it can be turned to show any photo. On touch screens a
+    // vertical swipe scrolls the page unless the ball is paused.
+    const dx = (e.clientX - dragX) / r;
+    const dy = e.pointerType === 'touch' && !paused ? 0 : (e.clientY - dragY) / r;
+    orient = turn(orient, 0, 1, 0, dx);
+    if (dy) orient = turn(orient, 1, 0, 0, dy);
+    const span = Math.max(0.008, (now - dragT) / 1000);
+    dragV = dx / span;
+    dragH = dy / span;
     dragX = e.clientX;
+    dragY = e.clientY;
     dragT = now;
   });
   const endDrag = (e: PointerEvent) => {
     if (!dragging) return;
     dragging = false;
     // A release after a pause throws nothing.
-    spinV = still() || performance.now() - dragT > 80 ? 0 : clamp(dragV, -6, 6);
+    const thrown = !swiping && !still() && performance.now() - dragT <= 80;
+    spinV = thrown ? clamp(dragV, -6, 6) : 0;
+    spinH = thrown ? clamp(dragH, -6, 6) : 0;
     canvas.classList.remove('is-dragging');
     // A tap or click that barely moved opens the photo under it in the viewer.
     if (e.type === 'pointerup' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8 && performance.now() - downT < 500) {
       spinV = 0;
+      spinH = 0;
       const hit = globe?.pick(e.clientX, e.clientY);
       if (hit) {
         canvas.classList.remove('is-over-photo');
