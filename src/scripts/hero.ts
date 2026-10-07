@@ -390,7 +390,26 @@ function start() {
         img.src = p.thumbs[0];
         return img;
       });
+      // Loading ring: three.js counts for 30%, the photos for the rest.
+      let decoded = 0;
+      let code = 0;
+      const loader = document.getElementById('hero-loader');
+      const loaderText = document.getElementById('hero-loader-text');
+      const showLoad = () => {
+        loader?.style.setProperty('--load', (code * 0.3 + (decoded / images.length) * 0.7).toFixed(3));
+        if (loaderText) loaderText.textContent = `Loading photos ${decoded} / ${images.length}`;
+      };
+      images.forEach((img) => {
+        const done = () => {
+          decoded++;
+          showLoad();
+        };
+        img.decode().then(done, done);
+      });
+      showLoad();
       const { createGlobe } = await import('./globe.ts');
+      code = 1;
+      showLoad();
       globe = await createGlobe(canvas, images, phone ? 120 : 220, phone ? 256 : 384, !phone);
       shown = progress();
       canvas.addEventListener('webglcontextlost', (e) => {

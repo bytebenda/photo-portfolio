@@ -25,6 +25,13 @@
 <section class="hero-space" id="hero" aria-label="Photo globe">
   <div class="hero-glow" aria-hidden="true"></div>
   <canvas class="hero-canvas" id="hero-canvas" aria-hidden="true"></canvas>
+  <div class="hero-loader" id="hero-loader">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="hero-loader-track" cx="50" cy="50" r="49" pathLength="1"></circle>
+      <circle class="hero-loader-arc" cx="50" cy="50" r="49" pathLength="1"></circle>
+    </svg>
+    <p class="hero-loader-text" id="hero-loader-text" role="status" aria-live="polite">Loading photos</p>
+  </div>
   <a class="hero-hint" id="hero-hint" href="#grid">
     <span>Scroll</span>
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5l4 4 4-4" /></svg>

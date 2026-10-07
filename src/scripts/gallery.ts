@@ -318,6 +318,10 @@ function showAll() {
   writeQuery();
 }
 $<HTMLButtonElement>('show-all').addEventListener('click', showAll);
+$<HTMLButtonElement>('filter-close').addEventListener('click', () => {
+  setPanel(null);
+  filterPill.focus();
+});
 $<HTMLButtonElement>('deselect-all').addEventListener('click', () => {
   for (const k of KEYS) selected[k] = new Set();
   applyFilters();
