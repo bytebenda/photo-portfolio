@@ -19,6 +19,7 @@ import {
   Scene,
   ShaderMaterial,
   Vector2,
+  Vector3,
   WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
@@ -38,11 +39,18 @@ export type Frame = {
   offsetY: number;
   scaleX: number;
   scaleY: number;
-  smoke: number; // strength of the smoke behind the globe, 0 to 1
-  time: number; // seconds, moves the smoke
+  backdrop: number; // strength of the floor and glow behind the globe, 0 to 1
+  time: number; // seconds, moves the floor and glow
+  floorDrop: number; // pixels the floor has sunk while scrolling
+  shadowY: number; // height of the globe above the floor during the drop-in, pixels
+  shadowScale: number; // squash of the globe, widens its shadow
 };
 
 const FOV = 30;
+
+// Globe radius in pixels: as large as fits below the header, leaving a strip of
+// floor visible under it.
+const globeRadius = (w: number, h: number) => Math.min(w * 0.45, (h - 64) * 0.4);
 const PICK = 6; // pixels around a click that still count as a hit
 const PICK_SIZE = PICK * 2 + 1;
 
@@ -222,62 +230,85 @@ const pickShader = /* glsl */ `
   }
 `;
 
-// Smoke behind the globe: one full-screen quad drawn before the tiles. Domain-
-// warped value noise gives slow, curling wisps that rise a little, densest
-// around the globe and gone towards the edges of the screen.
-const smokeVertex = /* glsl */ `
+// The backdrop: one full-screen quad drawn before the tiles. A perspective
+// grid floor just under the globe, with a contact shadow that follows the
+// drop-in, and two soft glows in the colours of the photos facing the viewer.
+const backdropVertex = /* glsl */ `
   varying vec2 vP;
   void main() {
-    vP = position.xy;
-    gl_Position = vec4(position.xy * 2.0, 0.999, 1.0);
+    vP = position.xy * 2.0;
+    gl_Position = vec4(vP, 0.999, 1.0);
   }
 `;
 
-const smokeFragment = (octaves: number) => /* glsl */ `
+const backdropFragment = /* glsl */ `
   uniform float uTime;
   uniform float uAmount;
   uniform float uR;
-  uniform vec2 uRes;
-  uniform vec2 uCenter;
+  uniform float uCamZ;
+  uniform float uTanH;
+  uniform float uAspect;
+  uniform float uFloorY;
+  uniform float uYaw;
+  uniform float uShadowY;
+  uniform float uShadowS;
+  uniform float uCenterY;
+  uniform vec3 uColA;
+  uniform vec3 uColB;
   varying vec2 vP;
 
-  float hash(vec2 p) {
-    p = fract(p * vec2(123.34, 456.21));
-    p += dot(p, p + 45.32);
-    return fract(p.x * p.y);
-  }
-
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
-
-  float fbm(vec2 p) {
-    float v = 0.0;
-    float a = 0.5;
-    mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
-    for (int i = 0; i < ${octaves}; i++) {
-      v += a * noise(p);
-      p = m * p;
-      a *= 0.5;
-    }
-    return v;
+  float gridLine(vec2 g) {
+    vec2 w = abs(fract(g - 0.5) - 0.5) / max(fwidth(g), vec2(1e-4));
+    return 1.0 - min(min(w.x, w.y), 1.0);
   }
 
   void main() {
-    vec2 d = (vP * uRes - uCenter) / uR; // in globe radii from its centre
-    float r = length(d);
+    vec3 dir = normalize(vec3(vP.x * uTanH * uAspect, vP.y * uTanH, -1.0));
+    vec2 px = vec2(vP.x * uAspect, vP.y) * uCamZ * uTanH; // pixels from the centre
+    vec3 mid = (uColA + uColB) * 0.5;
+    vec3 col = vec3(0.0);
+    float shade = 0.0;
+
+    // Two slow glows behind the globe, left and right.
     float t = uTime;
-    vec2 q = d * 1.3;
-    vec2 w = vec2(fbm(q + vec2(t * 0.05, -t * 0.03)), fbm(q + vec2(5.2 - t * 0.04, 1.3 + t * 0.05)));
-    float n = fbm(q * 1.2 + w * 1.8 + vec2(0.0, -t * 0.08));
-    float wisp = smoothstep(0.38, 0.85, n);
-    float around = smoothstep(2.4, 0.8, r);
-    float a = wisp * around * uAmount * 0.42;
-    vec3 col = mix(vec3(0.5, 0.56, 0.66), vec3(0.92, 0.94, 1.0), smoothstep(0.4, 0.9, n));
-    gl_FragColor = vec4(col, a);
+    vec2 ca = vec2(-0.85 + 0.12 * sin(t * 0.21), 0.3 + 0.1 * cos(t * 0.17)) * uR + vec2(0.0, uCenterY);
+    vec2 cb = vec2(0.85 + 0.12 * cos(t * 0.19), -0.15 + 0.1 * sin(t * 0.23)) * uR + vec2(0.0, uCenterY);
+    col += uColA * exp(-dot(px - ca, px - ca) / (uR * uR * 0.8)) * 0.5;
+    col += uColB * exp(-dot(px - cb, px - cb) / (uR * uR * 0.8)) * 0.5;
+
+    // A thin horizon line where the floor meets the dark.
+    float horizon = exp(-abs(dir.y) * 70.0) * smoothstep(1.0, 0.2, abs(vP.x));
+    col += mix(vec3(0.35, 0.42, 0.55), mid * 1.4, 0.6) * horizon * 0.22;
+
+    if (dir.y < -1e-4) {
+      float d = uFloorY / dir.y;
+      vec3 hit = vec3(0.0, 0.0, uCamZ) + dir * d;
+      vec2 q = hit.xz;
+      float c = cos(uYaw);
+      float s = sin(uYaw);
+      vec2 g = mat2(c, -s, s, c) * q;
+      float cell = uR / 3.0;
+      g.y += t * cell * 0.25; // drifting towards the viewer
+      float minor = gridLine(g / cell);
+      float major = gridLine(g / (cell * 4.0));
+      float far = exp(-max(0.0, -hit.z) / (uR * 3.5));
+      float side = smoothstep(1.0, 0.55, abs(vP.x));
+      vec3 lineCol = mix(vec3(0.42, 0.5, 0.64), normalize(mid + 0.02) * 0.9, 0.55);
+      col += lineCol * (minor * 0.16 + major * 0.32) * far * side;
+      // Light pooling on the floor around the globe, in the photos' colours.
+      float pool = exp(-length(q / vec2(1.0, 0.7)) / (uR * 1.1));
+      col += mid * pool * 0.22;
+      // Contact shadow: smaller, softer and lighter while the globe is in the air.
+      float lift = uShadowY / uR;
+      vec2 e = q / (uR * vec2(0.85 * uShadowS, 0.45) * (1.0 + lift * 0.6));
+      shade = exp(-dot(e, e) * 2.2) * 0.85 / (1.0 + lift * 2.5);
+    }
+
+    col *= 1.0 - shade;
+    col *= uAmount;
+    float a = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+    a = max(a, shade * uAmount * 0.9);
+    gl_FragColor = vec4(a > 0.0 ? col / a : col, a);
   }
 `;
 
@@ -397,25 +428,101 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uCenterY: { value: 0 },
   };
   const material = new ShaderMaterial({ vertexShader, fragmentShader, uniforms, transparent: true, side: DoubleSide });
-  const smokeUniforms = {
+  const backdropUniforms = {
     uTime: { value: 0 },
     uAmount: { value: 0 },
     uR: { value: 300 },
-    uRes: { value: new Vector2(1, 1) },
-    uCenter: { value: new Vector2(0, 0) },
+    uCamZ: { value: 1000 },
+    uTanH: { value: Math.tan((FOV * Math.PI) / 360) },
+    uAspect: { value: 1 },
+    uFloorY: { value: -300 },
+    uYaw: { value: 0 },
+    uShadowY: { value: 0 },
+    uShadowS: { value: 1 },
+    uCenterY: { value: 0 },
+    uColA: { value: new Vector3(0.25, 0.3, 0.4) },
+    uColB: { value: new Vector3(0.25, 0.3, 0.4) },
   };
-  const smokeMaterial = new ShaderMaterial({
-    vertexShader: smokeVertex,
-    fragmentShader: smokeFragment(fx ? 5 : 4),
-    uniforms: smokeUniforms,
+  const backdropMaterial = new ShaderMaterial({
+    vertexShader: backdropVertex,
+    fragmentShader: backdropFragment,
+    uniforms: backdropUniforms,
     transparent: true,
     depthTest: false,
     depthWrite: false,
   });
-  const smoke = new Mesh(new PlaneGeometry(1, 1), smokeMaterial);
-  smoke.frustumCulled = false;
-  smoke.renderOrder = -1;
-  scene.add(smoke);
+  const backdrop = new Mesh(new PlaneGeometry(1, 1), backdropMaterial);
+  backdrop.frustumCulled = false;
+  backdrop.renderOrder = -1;
+  scene.add(backdrop);
+
+  // Average colour of each photo, for the glow: the atlas scaled down to 4 by 4
+  // pixels per photo, then averaged.
+  const colours = new Float32Array(n * 3);
+  try {
+    const k = 4;
+    const small = document.createElement('canvas');
+    small.width = atlas.cols * k;
+    small.height = atlas.rows * k;
+    const sctx = small.getContext('2d', { willReadFrequently: true })!;
+    sctx.imageSmoothingQuality = 'high';
+    sctx.drawImage(atlas.texture.image as HTMLCanvasElement, 0, 0, small.width, small.height);
+    const px = sctx.getImageData(0, 0, small.width, small.height).data;
+    for (let i = 0; i < n; i++) {
+      const x0 = (i % atlas.cols) * k;
+      const y0 = Math.floor(i / atlas.cols) * k;
+      for (let y = y0; y < y0 + k; y++)
+        for (let x = x0; x < x0 + k; x++)
+          for (let c = 0; c < 3; c++) colours[i * 3 + c] += px[(y * small.width + x) * 4 + c] / (255 * k * k);
+    }
+  } catch {
+    colours.fill(0.3); // a tainted or failed canvas leaves the glow neutral
+  }
+  const glowA = [0.25, 0.3, 0.4];
+  const glowB = [0.25, 0.3, 0.4];
+  let glowT = 0;
+
+  // The mix of the photos facing the viewer, left half and right half, made a
+  // little more colourful and kept at one brightness, eased over about a second.
+  function updateGlow(rot: number) {
+    const now = performance.now();
+    const dt = glowT ? Math.min(0.1, (now - glowT) / 1000) : 1;
+    glowT = now;
+    // Per side, the most colourful photo near the front sets the colour; an
+    // average of many photos would only give a muddy brown.
+    const best = [-1, -1];
+    const score = [0, 0];
+    for (let i = 0; i < total; i++) {
+      const th = geo[i * 4] + rot;
+      const ph = geo[i * 4 + 1];
+      const z = Math.cos(ph) * Math.cos(th);
+      if (z <= 0.2) continue;
+      const x = Math.cos(ph) * Math.sin(th);
+      const photo = geo[i * 4 + 3];
+      const r0 = colours[photo * 3];
+      const g0 = colours[photo * 3 + 1];
+      const b0 = colours[photo * 3 + 2];
+      const sc = z * z * (Math.max(r0, g0, b0) - Math.min(r0, g0, b0));
+      const side = x < 0 ? 0 : 1;
+      if (sc > score[side]) {
+        score[side] = sc;
+        best[side] = photo;
+      }
+    }
+    const ease = Math.min(1, dt * 1.2);
+    [glowA, glowB].forEach((glow, side) => {
+      const photo = best[side];
+      if (photo < 0) return;
+      let c = [0, 1, 2].map((j) => colours[photo * 3 + j]);
+      const l = c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+      c = c.map((v) => Math.max(0, l + (v - l) * 1.8));
+      const top = Math.max(c[0], c[1], c[2]);
+      c = top < 0.02 ? [0.25, 0.3, 0.4] : c.map((v) => (v / top) * 0.55);
+      for (let j = 0; j < 3; j++) glow[j] += (c[j] - glow[j]) * ease;
+    });
+    backdropUniforms.uColA.value.set(glowA[0], glowA[1], glowA[2]);
+    backdropUniforms.uColB.value.set(glowB[0], glowB[1], glowB[2]);
+  }
 
   const pickMaterial = new ShaderMaterial({ vertexShader, fragmentShader: pickShader, uniforms, side: DoubleSide });
   const pickTarget = new WebGLRenderTarget(PICK_SIZE, PICK_SIZE);
@@ -467,10 +574,11 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     camera.far = camera.position.z * 4;
     camera.updateProjectionMatrix();
     // The globe fills the space below the header; tiles cover it with small gaps.
-    const r = Math.min(w, h - 64) * 0.45;
+    const r = globeRadius(w, h);
     uniforms.uR.value = r;
-    smokeUniforms.uR.value = r;
-    smokeUniforms.uRes.value.set(w, h);
+    backdropUniforms.uR.value = r;
+    backdropUniforms.uAspect.value = w / h;
+    backdropUniforms.uCamZ.value = camera.position.z;
     uniforms.uLift.value = Math.min(w, h) * 0.5;
     const side = pitch * r * 0.92;
     for (let i = 0; i < total; i++) geo[i * 4 + 2] = side;
@@ -515,10 +623,17 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uniforms.uRot.value = f.rot;
     uniforms.uIntro.value = f.intro;
     uniforms.uCenterY.value = f.centerY;
-    smokeUniforms.uAmount.value = f.smoke;
-    smokeUniforms.uTime.value = f.time % 1000;
-    smokeUniforms.uCenter.value.set(0, f.centerY);
-    smoke.visible = f.smoke > 0.002;
+    backdrop.visible = f.backdrop > 0.002;
+    if (backdrop.visible) {
+      updateGlow(f.rot);
+      backdropUniforms.uAmount.value = f.backdrop;
+      backdropUniforms.uTime.value = f.time % 1000;
+      backdropUniforms.uCenterY.value = f.centerY;
+      backdropUniforms.uFloorY.value = f.centerY - uniforms.uR.value - 4 - f.floorDrop;
+      backdropUniforms.uYaw.value = f.tiltY;
+      backdropUniforms.uShadowY.value = Math.max(0, f.shadowY);
+      backdropUniforms.uShadowS.value = f.shadowScale;
+    }
     mesh.rotation.set(f.tiltX, f.tiltY, 0);
     mesh.position.set(0, f.offsetY, 0);
     mesh.scale.set(f.scaleX, f.scaleY, 1);
@@ -537,15 +652,15 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   function pick(x: number, y: number) {
     camera.setViewOffset(width, height, x - PICK, y - PICK, PICK_SIZE, PICK_SIZE);
     mesh.material = pickMaterial;
-    const smokeOn = smoke.visible;
-    smoke.visible = false;
+    const backdropOn = backdrop.visible;
+    backdrop.visible = false;
     renderer.setRenderTarget(pickTarget);
     renderer.clear();
     renderer.render(scene, camera);
     renderer.readRenderTargetPixels(pickTarget, 0, 0, PICK_SIZE, PICK_SIZE, pixels);
     renderer.setRenderTarget(null);
     mesh.material = material;
-    smoke.visible = smokeOn;
+    backdrop.visible = backdropOn;
     camera.clearViewOffset();
     let photo = -1;
     let best = Infinity;
@@ -566,8 +681,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     geometry.dispose();
     material.dispose();
     pickMaterial.dispose();
-    smoke.geometry.dispose();
-    smokeMaterial.dispose();
+    backdrop.geometry.dispose();
+    backdropMaterial.dispose();
     pickTarget.dispose();
     atlas.texture.dispose();
     renderer.dispose();

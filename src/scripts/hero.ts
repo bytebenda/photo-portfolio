@@ -37,7 +37,7 @@ function start() {
   let downY = 0;
   let downT = 0;
   let hoverT = 0;
-  let smokeT = 0;
+  let backdropT = 0;
   let tilt = { x: 0, y: 0 };
   let tiltTarget = { x: 0, y: 0 };
   let intro = 0;
@@ -49,6 +49,8 @@ function start() {
 
   const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
   const progress = () => (heroH > 0 ? clamp(window.scrollY / heroH) : 1);
+  // Same as globeRadius() in globe.ts, which loads later.
+  const radius = (w: number, h: number) => Math.min(w * 0.45, (h - 64) * 0.4);
   const smooth = (t: number) => t * t * (3 - 2 * t);
   const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -154,7 +156,7 @@ function start() {
     intro = clamp(introT / INTRO);
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
-    const pose = introPose(introT, h, Math.min(w, h - 64) * 0.45);
+    const pose = introPose(introT, h, radius(w, h));
     // Scrolling during the drop-in takes the globe straight to rest.
     const rest = 1 - smooth(clamp(d / 0.08));
 
@@ -185,15 +187,18 @@ function start() {
       if (slow > 12) glow = false;
     }
 
-    // Smoke behind the globe: drifts in while the globe drops, thins out as
-    // soon as the visitor scrolls. Reduce Motion keeps it still.
-    if (moving) smokeT += dt;
-    const smoke = smooth(clamp(introT / INTRO)) * (1 - smooth(clamp(d / 0.35)));
+    // Floor and glow behind the globe: there before the globe lands, sunk and
+    // gone early in the scroll. Reduce Motion keeps them still.
+    if (moving) backdropT += dt;
+    const backdrop = smooth(clamp(introT / 0.35)) * (1 - smooth(clamp(d / 0.3)));
 
     globe.render({
       p: d,
-      smoke,
-      time: smokeT,
+      backdrop,
+      time: backdropT,
+      floorDrop: smooth(clamp(d / 0.3)) * h * 0.3,
+      shadowY: pose.y * rest,
+      shadowScale: 1 + (pose.sx - 1) * rest,
       vel: Math.abs(shownV),
       rot: shownRot,
       tiltX: tilt.x * lean,
@@ -268,7 +273,7 @@ function start() {
       return;
     }
     const now = performance.now();
-    const r = Math.min(canvas.clientWidth, canvas.clientHeight - 64) * 0.45;
+    const r = radius(canvas.clientWidth, canvas.clientHeight);
     const d = (e.clientX - dragX) / r;
     rot += d;
     dragV = d / Math.max(0.008, (now - dragT) / 1000);
