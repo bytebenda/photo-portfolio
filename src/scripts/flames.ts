@@ -4,6 +4,8 @@ const button = document.getElementById('flame-btn');
 const MAX_BURSTS = 8; // enough for spamming, without piling up thousands of flames
 
 button?.addEventListener('click', () => {
+  // The ball goes up with the flames (hero.ts decides whether it can).
+  document.dispatchEvent(new CustomEvent('hero:launch'));
   if (document.querySelectorAll('.flames').length >= MAX_BURSTS) return;
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const rand = (a: number, b: number) => a + Math.random() * (b - a);

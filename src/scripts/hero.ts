@@ -143,6 +143,58 @@ function start() {
     return pose;
   }
 
+  // The flame button launches the ball: it crouches, shoots up out of view with
+  // the flames while spinning faster and faster, waits out of sight, and comes
+  // back with the drop-in's fall and bounces, raising dust at each impact.
+  const LIFT = 0.55;
+  const HANG = 0.35;
+  const LAUNCH = LIFT + HANG + INTRO;
+  const IMPACTS = [
+    [LIFT + HANG + FALL, 1],
+    [LIFT + HANG + FALL + HOP, 0.55],
+    [LIFT + HANG + FALL + HOP + HOP2, 0.25],
+  ];
+  let launchAt = -1; // when the launch started, -1 when there is none
+  let lastLaunchT = 0;
+  function launchPose(t: number, h: number, r: number) {
+    if (t >= LIFT + HANG) return introPose(t - LIFT - HANG, h, r);
+    const pose = { y: 0, sx: 1, sy: 1, spin: 0 };
+    const k = Math.max(0, 1 - Math.abs(t - 0.05) / 0.08);
+    pose.sy -= 0.12 * k; // pushing off
+    pose.sx += 0.07 * k;
+    const s = clamp((t - 0.06) / (LIFT - 0.06));
+    pose.y = t >= LIFT ? h + 2 * r : (h / 2 + ballY + r + 80) * s * s;
+    pose.spin = 4 * Math.PI * s * s;
+    pose.sy += 0.08 * s; // stretched by the speed
+    pose.sx -= 0.04 * s;
+    return pose;
+  }
+
+  // A puff of dust where the ball meets the floor; `strength` 1 for the first,
+  // hardest impact. The layer removes itself when its puffs are gone.
+  function dust(x: number, y: number, r: number, strength: number) {
+    const rand = (a: number, b: number) => a + Math.random() * (b - a);
+    const layer = document.createElement('div');
+    layer.className = 'dust';
+    layer.setAttribute('aria-hidden', 'true');
+    layer.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    let longest = 0;
+    for (let i = 0, n = Math.round(4 + 12 * strength); i < n; i++) {
+      const puff = document.createElement('span');
+      const side = i % 2 ? 1 : -1;
+      const dur = rand(0.5, 0.9);
+      longest = Math.max(longest, dur);
+      puff.style.setProperty('--dx', `${Math.round(side * rand(0.15, 0.9) * r * (0.5 + strength / 2))}px`);
+      puff.style.setProperty('--dy', `${Math.round(-rand(4, 40) * strength)}px`);
+      puff.style.setProperty('--s', `${Math.round(rand(18, 46) * (0.6 + strength * 0.4))}px`);
+      puff.style.setProperty('--o', (0.35 + 0.35 * strength).toFixed(2));
+      puff.style.setProperty('--dur', `${dur.toFixed(2)}s`);
+      layer.append(puff);
+    }
+    document.body.append(layer);
+    setTimeout(() => layer.remove(), longest * 1000 + 100);
+  }
+
   // Back to the plain gallery, keeping what is on screen in place.
   function stop() {
     cancelAnimationFrame(raf);
@@ -176,7 +228,7 @@ function start() {
     setStyle(bio, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
     setStyle(bio, 'pointerEvents', at < 0.1 ? 'auto' : 'none');
     setStyle(grid, 'opacity', at < 1 ? Math.min(1, x * 50).toFixed(3) : '');
-    setStyle(hit, 'pointerEvents', p < 0.1 && intro >= 1 ? 'auto' : 'none');
+    setStyle(hit, 'pointerEvents', p < 0.1 && intro >= 1 && launchAt < 0 ? 'auto' : 'none');
     return p;
   }
 
@@ -227,7 +279,9 @@ function start() {
     intro = clamp(introT / INTRO);
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
-    const pose = introPose(introT, h, radius(w, h));
+    const launchT = launchAt < 0 ? 0 : (now - launchAt) / 1000;
+    if (launchAt >= 0 && launchT >= LAUNCH) launchAt = -1;
+    const pose = launchAt >= 0 ? launchPose(launchT, h, radius(w, h)) : introPose(introT, h, radius(w, h));
     // Scrolling during the drop-in takes the globe straight to rest.
     const rest = 1 - smooth(clamp(d / 0.08));
 
@@ -309,6 +363,14 @@ function start() {
     if (moving && !paused) backdropT += dt;
     const backdrop = smooth(clamp(introT / 0.35)) * (1 - smooth(clamp(d / 0.3)));
 
+    // Dust at each impact of the launched ball coming back down.
+    if (launchAt >= 0) {
+      for (const [at, strength] of IMPACTS) {
+        if (lastLaunchT < at && launchT >= at && d < 0.08) dust(w / 2 + ballX, h / 2 + ballY + r * z + 2, r * z, strength);
+      }
+      lastLaunchT = launchT;
+    }
+
     // The touch disc follows the ball (sideways roll and drop-in).
     const hr = r * 1.03 * z;
     setStyle(hit, 'width', `${Math.round(hr * 2)}px`);
@@ -341,7 +403,7 @@ function start() {
     // Nothing to draw behind the open viewer.
     const busy = moving && !paused && Math.min(p, shown) < 1 && !document.hidden && !root.classList.contains('viewer-open');
     const coasting = spinV !== 0 || spinH !== 0 || scrollSpin > 1e-3 || Math.abs(ballX) > 0.3;
-    if (busy || coasting || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
+    if (busy || coasting || springing || dragging || intro < 1 || launchAt >= 0) raf = requestAnimationFrame(tick);
   }
 
   // A grid square in viewport pixels, and when its photo leaves: by distance
@@ -400,9 +462,10 @@ function start() {
     const colours = globe?.glowColours();
     if (colours) {
       const css = (c: number[]) => c.map((v) => Math.round(Math.min(1, v / 0.55) * 255)).join(' ');
-      bio.style.setProperty('--bio-a', css(colours[0]));
-      bio.style.setProperty('--bio-b', css(colours[1]));
+      hero.style.setProperty('--bio-a', css(colours[0]));
+      hero.style.setProperty('--bio-b', css(colours[1]));
     }
+    hero.classList.add('is-tinted');
     bio.classList.add('is-in');
   }
 
@@ -453,6 +516,16 @@ function start() {
     e.preventDefault();
     window.scrollTo({ top: heroH, behavior: still() ? 'auto' : 'smooth' });
   });
+  document.addEventListener('hero:launch', () => {
+    if (still() || !globe || intro < 1 || launchAt >= 0 || progress() >= 0.1) return;
+    launchAt = performance.now();
+    lastLaunchT = 0;
+    dragging = false;
+    touches.clear();
+    hit.classList.remove('is-dragging');
+    kick();
+  });
+
   // Escape in the gallery goes back up to the ball.
   document.addEventListener('gallery:escape', () => {
     if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' });
