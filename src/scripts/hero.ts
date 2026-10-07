@@ -12,6 +12,8 @@ function start() {
   const hint = document.getElementById('hero-hint')!;
   const pauseBtn = document.getElementById('hero-pause') as HTMLButtonElement;
   const hit = document.getElementById('hero-hit')!;
+  const bio = document.getElementById('hero-bio')!;
+  const header = document.querySelector<HTMLElement>('.header');
   const tiles = Array.from(document.querySelectorAll<HTMLElement>('#grid .tile'));
   const grid = document.getElementById('grid')!;
   const glowEl = hero.querySelector<HTMLElement>('.hero-glow')!;
@@ -36,6 +38,7 @@ function start() {
   let scrollSpin = 0; // extra roll from scrolling down, rad/s
   let lastP = 0;
   let ballX = 0; // sideways position, pixels, following the cursor
+  let ballY = 32; // centre below the middle of the screen, pixels (half the header)
   let ballTarget = 0;
   let spinV = 0; // momentum from a drag around the vertical axis, rad/s
   let spinH = 0; // and around the horizontal axis
@@ -161,6 +164,8 @@ function start() {
     setStyle(hint, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
     setStyle(pauseBtn, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
     setStyle(pauseBtn, 'pointerEvents', at < 0.1 ? 'auto' : 'none');
+    setStyle(bio, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
+    setStyle(bio, 'pointerEvents', at < 0.1 ? 'auto' : 'none');
     setStyle(grid, 'opacity', at < 1 ? Math.min(1, x * 50).toFixed(3) : '');
     setStyle(hit, 'pointerEvents', p < 0.1 && intro >= 1 ? 'auto' : 'none');
     return p;
@@ -295,7 +300,7 @@ function start() {
     const hr = r * 1.03;
     setStyle(hit, 'width', `${Math.round(hr * 2)}px`);
     setStyle(hit, 'height', `${Math.round(hr * 2)}px`);
-    setStyle(hit, 'transform', `translate(${Math.round(w / 2 + ballX * (1 - upright) - hr)}px, ${Math.round(h / 2 + 32 - pose.y * rest - hr)}px)`);
+    setStyle(hit, 'transform', `translate(${Math.round(w / 2 + ballX * (1 - upright) - hr)}px, ${Math.round(h / 2 + ballY - pose.y * rest - hr)}px)`);
 
     globe.render({
       p: d,
@@ -312,7 +317,7 @@ function start() {
       ballX: ballX * (1 - upright),
       floorZ: rolled,
       intro: 1,
-      centerY: -32,
+      centerY: -ballY,
       bloom,
       offsetY: pose.y * rest,
       scaleX: 1 + (pose.sx - 1) * rest,
@@ -353,11 +358,34 @@ function start() {
     return { x: b.x, y, size: b.size, order: clamp(dist) };
   }
 
+  // On phones the bio sits under the ball, so the ball is centred in the room
+  // between the header and the bio, and never higher than just under the header.
+  // Larger screens keep it just below the middle, with the bio in the corner.
+  const narrow = window.matchMedia('(max-width: 640px)');
+  function placeBall() {
+    const w = canvas.clientWidth || window.innerWidth;
+    const h = canvas.clientHeight || window.innerHeight;
+    let y = h / 2 + 32;
+    if (narrow.matches) {
+      const top = header?.offsetHeight ?? 64;
+      const r = radius(w, h);
+      y = Math.min(y, Math.max(top + 8 + r, (top + bio.getBoundingClientRect().top) / 2));
+    }
+    const next = Math.round(y - h / 2);
+    hero.style.setProperty('--ball-y', `${Math.round(h / 2) + next}px`);
+    if (next === ballY) return;
+    ballY = next;
+    kick();
+  }
+  placeBall();
+  new ResizeObserver(placeBall).observe(bio);
+
   // The canvas is sized to the large viewport, so a phone's address bar sliding
   // away does not resize it mid-scroll; only real size changes rebuild it.
   let size = '';
   function resize() {
     heroH = hero.offsetHeight;
+    placeBall();
     remeasure();
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;

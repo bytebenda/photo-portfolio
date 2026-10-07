@@ -664,6 +664,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
 
   let width = 1;
   let height = 1;
+  let centreShift = 0; // how far the ball centre sits from the middle of the screen, pixels
   let primaries: number[] = [];
 
   // Desktop only: a bloom pass for the glow, loaded with the rest of the effects.
@@ -703,12 +704,19 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
     backdropUniforms.uAspect.value = w / h;
     backdropUniforms.uCamZ.value = camera.position.z;
     uniforms.uLift.value = Math.min(w, h) * 0.5;
-    // The smallest scale at which the unrolled sheet (a sinusoidal map, widest
-    // in the middle) reaches past every edge of the screen.
+    fitSheet();
+  }
+
+  // The smallest scale at which the unrolled sheet (a sinusoidal map, widest
+  // in the middle, centred on the ball) reaches past every edge of the screen.
+  // The margin of 40 px covers the usual 32 px offset; a ball moved further
+  // from the middle, as on phones, needs a taller sheet.
+  function fitSheet() {
+    const r = uniforms.uR.value;
     let sheet = 1;
     while (sheet < 2.5) {
-      const top = (h / 2 + 40) / (sheet * r);
-      if (top < Math.PI / 2 && sheet * Math.PI * r * Math.cos(top) >= w / 2 + 20) break;
+      const top = (height / 2 + 40 + Math.max(0, Math.abs(centreShift) - 32)) / (sheet * r);
+      if (top < Math.PI / 2 && sheet * Math.PI * r * Math.cos(top) >= width / 2 + 20) break;
       sheet += 0.05;
     }
     uniforms.uSheet.value = sheet;
@@ -748,6 +756,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
   }
 
   function render(f: Frame) {
+    if (f.centerY !== centreShift) {
+      centreShift = f.centerY;
+      fitSheet();
+    }
     uniforms.uP.value = f.p;
     uniforms.uVel.value = f.vel;
     uniforms.uIntro.value = f.intro;

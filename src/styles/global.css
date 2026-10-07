@@ -534,11 +534,9 @@ html:not(.js) .glass-btn {
 .viewer-info[aria-expanded='true'] {
   background: rgba(255, 255, 255, 0.28);
 }
-.info-panel {
-  position: absolute;
-  right: 20px;
-  bottom: calc(max(20px, env(safe-area-inset-bottom)) + 56px);
-  max-width: min(320px, calc(100vw - 32px));
+/* The glass card of the photo details, also used for the bio on the hero. */
+.info-panel,
+.hero-bio {
   box-sizing: border-box;
   padding: 12px 16px;
   border-radius: 14px;
@@ -550,6 +548,12 @@ html:not(.js) .glass-btn {
   color: var(--fg);
   font-size: 13px;
   line-height: 1.4;
+}
+.info-panel {
+  position: absolute;
+  right: 20px;
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + 56px);
+  max-width: min(320px, calc(100vw - 32px));
   animation: info-in 160ms ease-out;
 }
 .info-panel[hidden],
@@ -699,7 +703,7 @@ html:not(.js) .glass-btn {
 }
 .hero-glow {
   z-index: 9;
-  background: radial-gradient(circle at 50% calc(50% + 32px), rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 38%, transparent 62%);
+  background: radial-gradient(circle at 50% var(--ball-y, calc(50% + 32px)), rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 38%, transparent 62%);
 }
 .hero-hint {
   position: fixed;
@@ -745,7 +749,7 @@ html:not(.hero-on) .hero-hint {
 .hero-loader {
   position: fixed;
   left: 50%;
-  top: calc(50lvh + 32px);
+  top: var(--ball-y, calc(50lvh + 32px)); /* hero.ts sets the ball centre */
   z-index: 11;
   width: min(90vw, calc((100lvh - 64px) * 0.8));
   aspect-ratio: 1;
@@ -854,6 +858,29 @@ html.hero:not(.hero-ready) .hero-pause {
   .hero-pause {
     display: none; /* the ball does not roll on its own then */
   }
+}
+/* A short bio in the glass of the photo details: bottom right on larger
+   screens, below the ball on phones, where hero.ts moves the ball up for it. */
+.hero-bio {
+  position: fixed;
+  right: calc(20px + env(safe-area-inset-right));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 12;
+  width: min(320px, calc(100vw - 40px));
+}
+.hero-bio p {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .hero-bio {
+    left: calc(16px + env(safe-area-inset-left));
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(76px + env(safe-area-inset-bottom)); /* above the pause button and the hint */
+    width: auto;
+  }
+}
+html:not(.hero-on) .hero-bio {
+  visibility: hidden;
 }
 /* The Filter button appears with the gallery; until then the canvas covers the grid. */
 .filter {
