@@ -33,6 +33,7 @@ export type Frame = {
   rot: number; // turn along the rows inside the shader, radians (0 while the ball rolls freely)
   quat: [number, number, number, number]; // orientation of the rolling ball
   upright: boolean; // the ball is back to its shader turn only, ready to unroll
+  turn: number; // 0 rolling view, 1 turned back to rows across, ready for the wide sheet
   ballX: number; // sideways position of the ball in pixels
   intro: number; // fade-in after loading, 0 to 1
   centerY: number; // globe centre offset in pixels (below the header)
@@ -57,11 +58,12 @@ const globeRadius = (w: number, h: number) => Math.min(w * 0.45, (h - 64) * 0.4)
 const PICK = 6; // pixels around a click that still count as a hit
 const PICK_SIZE = PICK * 2 + 1;
 
-// Timeline, as shares of p. Unrolling runs over [0, UNROLL]. Copies leave
-// between COPY_START and COPY_START + COPY_SPREAD; primaries start between
-// FLY_START and FLY_START + FLY_SPREAD (centre of the screen first) and take
-// FLY_TIME, so the last one lands at 0.90, before the crossfade to the grid.
-const UNROLL = 0.6;
+// Timeline, as shares of p. Unrolling runs over [0, UNROLL], so the full sheet
+// is on screen for a moment before anything leaves it. Copies leave from 0.38
+// (spread 0.14, taking 0.3); primaries start from 0.4 (spread 0.2, centre of
+// the screen first) and take 0.3, so the last one lands at 0.90, before the
+// crossfade to the grid.
+const UNROLL = 0.4;
 
 const vertexShader = /* glsl */ `
   #define PI 3.141592653589793
@@ -79,6 +81,8 @@ const vertexShader = /* glsl */ `
   uniform float uCenterY;
   uniform float uLift;
   uniform float uFx;
+  uniform float uTurn;
+  uniform float uSheet;
 
   varying vec2 vUv;
   varying vec2 vCell;
@@ -112,7 +116,8 @@ const vertexShader = /* glsl */ `
       x = sin(s * l) / l;
       z = rr - 2.0 * h * h / l;
     }
-    return vec3(x, y, z - uR * u);
+    // The sheet grows as it flattens, so it covers the whole screen.
+    return vec3(vec2(x, y) * mix(1.0, uSheet, u), z - uR * u);
   }
 
   float smoother(float t) {
@@ -120,10 +125,15 @@ const vertexShader = /* glsl */ `
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
   }
 
-  // The ball is laid out with its poles on the y axis and shown with them on
-  // the x axis, so it rolls forward along its rows of photos.
+  // The ball is laid out with its poles on the y axis. While it rolls it is
+  // shown a quarter turn round, poles left and right, so it rolls along its
+  // rows; at the start of the scroll it turns back (uTurn 0 to 1), so it opens
+  // into a wide sheet.
   vec3 toView(vec3 v) {
-    return vec3(v.y, -v.x, v.z);
+    float g = (1.0 - uTurn) * PI * 0.5;
+    float cg = cos(g);
+    float sg = sin(g);
+    return vec3(v.x * cg + v.y * sg, -v.x * sg + v.y * cg, v.z);
   }
 
   vec3 rotateAround(vec3 v, vec3 axis, float a) {
@@ -138,7 +148,7 @@ const vertexShader = /* glsl */ `
     // Unroll: the back opens first, the front last, so the globe peels open
     // from its seam.
     float seam = 1.0 - abs(th) / PI;
-    float u = smoother(uP / ${UNROLL.toFixed(2)} * 1.3 - seam * 0.3);
+    float u = smoother(uP / ${UNROLL.toFixed(2)} * 1.15 - seam * 0.15);
 
     // This corner of the tile. Band tiles span their own stretch of longitude
     // and latitude, so neighbours share edges exactly. A pole cap is the square
@@ -175,8 +185,8 @@ const vertexShader = /* glsl */ `
 
     // Each tile has its own window on the timeline.
     float primary = aTarget.w;
-    float start = mix(0.24 + aOrder * 0.14, 0.28 + aOrder * 0.24, primary);
-    float q = clamp((uP - start) / mix(0.3, 0.38, primary), 0.0, 1.0);
+    float start = mix(0.38 + aOrder * 0.14, 0.4 + aOrder * 0.2, primary);
+    float q = clamp((uP - start) / 0.3, 0.0, 1.0);
     float qe = smoother(q);
     float arc = sin(q * PI);
 
@@ -187,8 +197,7 @@ const vertexShader = /* glsl */ `
       vec3 ctrl = mix(c1, c2, 0.5) + vec3(0.0, 0.0, uLift);
       vec3 centre = mix(mix(c1, ctrl, qe), mix(ctrl, c2, qe), qe);
       vec3 tangent = normalize(mix(ctrl - c1, c2 - ctrl, qe) + vec3(1e-4));
-      // On the ball a photo's top points along its row; on the grid it is upright.
-      vec3 local = mix(local1, vec3(position.y, -position.x, 0.0) * aTarget.z, qe);
+      vec3 local = mix(local1, vec3(position.xy * aTarget.z, 0.0), qe);
       // A slight turn in flight around a per-photo axis, flat again on landing.
       float a = photo * 2.39996;
       vec3 axis = normalize(vec3(cos(a), sin(a), 0.0));
@@ -212,19 +221,25 @@ const vertexShader = /* glsl */ `
     float facing = vn.z;
     float key = max(dot(vn, normalize(vec3(-0.35, 0.45, 0.82))), 0.0);
     float depth = clamp(vn.z * 0.5 + 0.5, 0.0, 1.0); // from the view, so it holds while the ball rolls
-    float lit = facing < 0.0 ? 0.18 + 0.12 * depth : mix(0.32, 1.0, key) * mix(0.55, 1.0, depth);
+    // The backs of tiles stay dark, so the far side reads as the back of a sheet.
+    float lit = facing < 0.0 ? 0.1 + 0.08 * depth : mix(0.32, 1.0, key) * mix(0.55, 1.0, depth);
     vLight = mix(lit, 1.0, max(u, qe * primary));
     vAlpha = uIntro * (1.0 - qe * (1.0 - primary));
     // The pole caps go before the sheet opens; they would tear.
-    if (kind != 0.0) vAlpha *= 1.0 - smoothstep(0.02, 0.1, uP);
+    if (kind != 0.0) vAlpha *= 1.0 - smoothstep(0.02, 0.08, uP);
     // Depth blur: the far side of the globe and receding copies go soft.
-    vBlur = (1.0 - u) * (1.0 - depth) * 2.5 + qe * (1.0 - primary) * 4.0;
+    vBlur = (1.0 - u) * (1.0 - depth) * 2.5 + qe * (1.0 - primary) * 4.0 + (facing < 0.0 ? 1.5 : 0.0);
     vRim = arc * primary * uFx;
     vPhoto = photo;
     vFacing = facing;
 
-    // Image top along -theta, which is up on screen while the ball rolls.
-    vUv = vec2(position.y + 0.5, position.x + 0.5);
+    // The photo turns against the ball, so it is upright on screen throughout:
+    // its top lies along -theta while the ball rolls, along +phi once it has
+    // turned back. In between it is zoomed just enough to fill the tile.
+    float g = (1.0 - uTurn) * PI * 0.5;
+    vec2 img = vec2(position.x * cos(g) + position.y * sin(g), -position.x * sin(g) + position.y * cos(g));
+    img /= abs(cos(g)) + abs(sin(g));
+    vUv = vec2(img.x + 0.5, 0.5 - img.y);
     vCell = aCell;
   }
 `;
@@ -346,8 +361,13 @@ const backdropFragment = /* glsl */ `
   }
 `;
 
-async function loadAtlas(urls: string[], cell: number) {
-  const n = urls.length;
+// The thumbnails drawn into one texture. It is ready as soon as every image
+// has decoded or after WAIT_MS, whichever comes first; later images are drawn
+// in as they arrive, and onLate() runs for each so the colours can follow.
+const WAIT_MS = 1200;
+
+function loadAtlas(images: HTMLImageElement[], cell: number) {
+  const n = images.length;
   const cols = Math.ceil(Math.sqrt(n));
   const rows = Math.ceil(n / cols);
   const size = Math.min(cell, Math.floor(4096 / cols), Math.floor(4096 / rows));
@@ -357,29 +377,34 @@ async function loadAtlas(urls: string[], cell: number) {
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  await Promise.all(
-    urls.map(async (url, i) => {
-      const img = new Image();
-      img.decoding = 'async';
-      img.src = url;
-      try {
-        await img.decode();
-      } catch {
-        return; // a missing thumbnail stays a dark square
-      }
-      // Thumbnails are square already; cover-crop anyway in case one is not.
-      const s = Math.min(img.naturalWidth, img.naturalHeight);
-      const sx = (img.naturalWidth - s) / 2;
-      const sy = (img.naturalHeight - s) / 2;
-      ctx.drawImage(img, sx, sy, s, s, (i % cols) * size, Math.floor(i / cols) * size, size, size);
-    }),
-  );
   const texture = new CanvasTexture(canvas);
   texture.flipY = false;
   texture.generateMipmaps = true;
   texture.minFilter = LinearMipmapLinearFilter;
   texture.anisotropy = 4;
-  return { texture, cols, rows, size };
+  const atlas = { texture, cols, rows, size, onLate: (_i: number) => {} };
+  let ready = false;
+  const draws = images.map(async (img, i) => {
+    try {
+      await img.decode();
+    } catch {
+      return; // a missing thumbnail stays a dark square
+    }
+    // Thumbnails are square already; cover-crop anyway in case one is not.
+    const s = Math.min(img.naturalWidth, img.naturalHeight);
+    const sx = (img.naturalWidth - s) / 2;
+    const sy = (img.naturalHeight - s) / 2;
+    ctx.drawImage(img, sx, sy, s, s, (i % cols) * size, Math.floor(i / cols) * size, size, size);
+    if (ready) {
+      texture.needsUpdate = true;
+      atlas.onLate(i);
+    }
+  });
+  return Promise.race([Promise.all(draws), new Promise((r) => setTimeout(r, WAIT_MS))]).then(() => {
+    ready = true;
+    texture.needsUpdate = true;
+    return atlas;
+  });
 }
 
 // A fixed pseudo-random offset per row, so the tile edges of neighbouring
@@ -389,14 +414,23 @@ const random0 = (k: number) => {
   return x - Math.floor(x);
 };
 
-export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], count: number, cell: number, fx: boolean) {
-  const n = thumbs.length;
+export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageElement[], count: number, cell: number, fx: boolean) {
+  const n = images.length;
+  // The glow effects load while the thumbnails decode.
+  const effects = fx
+    ? Promise.all([
+        import('three/examples/jsm/postprocessing/EffectComposer.js'),
+        import('three/examples/jsm/postprocessing/RenderPass.js'),
+        import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
+        import('three/examples/jsm/postprocessing/OutputPass.js'),
+      ]).catch(() => null)
+    : Promise.resolve(null);
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
   // The shader outputs the thumbnails' own sRGB values; no conversion anywhere,
   // so the landed tiles match the real grid.
   renderer.outputColorSpace = LinearSRGBColorSpace;
-  const atlas = await loadAtlas(thumbs, cell);
+  const atlas = await loadAtlas(images, cell);
   atlas.texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 
   const scene = new Scene();
@@ -484,6 +518,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uLift: { value: 200 },
     uFx: { value: fx ? 1 : 0 },
     uIntro: { value: 0 },
+    uTurn: { value: 0 },
+    uSheet: { value: 1 },
     uCenterY: { value: 0 },
   };
   const material = new ShaderMaterial({ vertexShader, fragmentShader, uniforms, transparent: true, side: DoubleSide });
@@ -518,26 +554,28 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
 
   // Average colour of each photo, for the glow: the atlas scaled down to 4 by 4
   // pixels per photo, then averaged.
-  const colours = new Float32Array(n * 3);
-  try {
-    const k = 4;
-    const small = document.createElement('canvas');
-    small.width = atlas.cols * k;
-    small.height = atlas.rows * k;
-    const sctx = small.getContext('2d', { willReadFrequently: true })!;
-    sctx.imageSmoothingQuality = 'high';
-    sctx.drawImage(atlas.texture.image as HTMLCanvasElement, 0, 0, small.width, small.height);
-    const px = sctx.getImageData(0, 0, small.width, small.height).data;
-    for (let i = 0; i < n; i++) {
-      const x0 = (i % atlas.cols) * k;
-      const y0 = Math.floor(i / atlas.cols) * k;
-      for (let y = y0; y < y0 + k; y++)
-        for (let x = x0; x < x0 + k; x++)
-          for (let c = 0; c < 3; c++) colours[i * 3 + c] += px[(y * small.width + x) * 4 + c] / (255 * k * k);
+  const colours = new Float32Array(n * 3).fill(0.3);
+  const k = 4;
+  const small = document.createElement('canvas');
+  small.width = k;
+  small.height = k;
+  const sctx = small.getContext('2d', { willReadFrequently: true });
+  function colourOf(i: number) {
+    if (!sctx) return;
+    try {
+      sctx.drawImage(atlas.texture.image as HTMLCanvasElement, (i % atlas.cols) * atlas.size, Math.floor(i / atlas.cols) * atlas.size, atlas.size, atlas.size, 0, 0, k, k);
+      const px = sctx.getImageData(0, 0, k, k).data;
+      for (let c = 0; c < 3; c++) {
+        let sum = 0;
+        for (let j = 0; j < k * k; j++) sum += px[j * 4 + c];
+        colours[i * 3 + c] = sum / (255 * k * k);
+      }
+    } catch {
+      // a tainted or failed canvas leaves the glow neutral
     }
-  } catch {
-    colours.fill(0.3); // a tainted or failed canvas leaves the glow neutral
   }
+  for (let i = 0; i < n; i++) colourOf(i);
+  atlas.onLate = colourOf;
   const glowA = [0.25, 0.3, 0.4];
   const glowB = [0.25, 0.3, 0.4];
   let glowT = 0;
@@ -545,6 +583,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   // The mix of the photos facing the viewer, left half and right half, made a
   // little more colourful and kept at one brightness, eased over about a second.
   const yAxis = new Vector3(0, 1, 0);
+  let turnNow = 0;
   const facing = new Vector3();
   function updateGlow(rot: number) {
     const now = performance.now();
@@ -556,7 +595,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     const score = [0, 0];
     for (let i = 0; i < total; i++) {
       facing.set(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]).applyAxisAngle(yAxis, rot);
-      facing.set(facing.y, -facing.x, facing.z).applyQuaternion(mesh.quaternion); // as toView() in the shader
+      const g = ((1 - turnNow) * Math.PI) / 2; // as toView() in the shader
+      facing.set(facing.x * Math.cos(g) + facing.y * Math.sin(g), -facing.x * Math.sin(g) + facing.y * Math.cos(g), facing.z).applyQuaternion(mesh.quaternion);
       const z = facing.z;
       if (z <= 0.2) continue;
       const x = facing.x;
@@ -605,14 +645,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
 
   // Desktop only: a bloom pass for the glow, loaded with the rest of the effects.
   let bloom: { composer: { render(): void; setSize(w: number, h: number): void; setPixelRatio(r: number): void }; pass: { strength: number } } | null = null;
-  if (fx) {
+  const fxModules = await effects;
+  if (fxModules) {
     try {
-      const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all([
-        import('three/examples/jsm/postprocessing/EffectComposer.js'),
-        import('three/examples/jsm/postprocessing/RenderPass.js'),
-        import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
-        import('three/examples/jsm/postprocessing/OutputPass.js'),
-      ]);
+      const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = fxModules;
       const composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
       const pass = new UnrealBloomPass(new Vector2(256, 256), 0, 0.45, 0.82);
@@ -644,6 +680,15 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     backdropUniforms.uAspect.value = w / h;
     backdropUniforms.uCamZ.value = camera.position.z;
     uniforms.uLift.value = Math.min(w, h) * 0.5;
+    // The smallest scale at which the unrolled sheet (a sinusoidal map, widest
+    // in the middle) reaches past every edge of the screen.
+    let sheet = 1;
+    while (sheet < 2.5) {
+      const top = (h / 2 + 40) / (sheet * r);
+      if (top < Math.PI / 2 && sheet * Math.PI * r * Math.cos(top) >= w / 2 + 20) break;
+      sheet += 0.05;
+    }
+    uniforms.uSheet.value = sheet;
   }
 
   // For each photo the copy closest to the front becomes the one that flies to
@@ -699,6 +744,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     // lives in the group; once upright the shader takes it over, which is where
     // the flight targets expect it.
     uniforms.uRot.value = f.rot;
+    uniforms.uTurn.value = f.turn;
+    turnNow = f.turn;
     uniforms.uCenterY.value = f.upright ? f.centerY : 0;
     mesh.quaternion.set(...f.quat);
     ball.position.set(f.ballX, f.offsetY + (f.upright ? 0 : f.centerY), 0);

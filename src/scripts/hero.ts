@@ -194,7 +194,7 @@ function start() {
     // towards the cursor; a drag turns it and throws it. All of it stops while
     // the globe unrolls. Reduce Motion keeps only what follows the visitor's
     // own scrolling and dragging.
-    const free = 1 - smooth(clamp(d / 0.1));
+    const free = 1 - smooth(clamp(d / 0.06));
     const r = radius(w, h);
     if (!dragging) {
       spinV *= Math.exp(-dt * 2.2);
@@ -214,7 +214,10 @@ function start() {
     // back over the first bit of the scroll to rolling straight forward only:
     // a turn around x, along its rows, which the shader takes over.
     const shownQ = turn(orient, -1, 0, 0, pose.spin);
-    const upright = smooth(clamp(d / 0.08));
+    const upright = smooth(clamp(d / 0.06));
+    // Then it turns a quarter turn on screen, rows across, for the wide sheet.
+    const tq = clamp((d - 0.06) / 0.16);
+    const turnBack = tq * tq * tq * (tq * (tq * 6 - 15) + 10);
     const along = Math.hypot(shownQ[0], shownQ[3]) < 1e-3 ? 0 : 2 * Math.atan2(shownQ[0], shownQ[3]);
     const standing: Quat = [Math.sin(along / 2), 0, 0, Math.cos(along / 2)];
     const isUpright = upright >= 1;
@@ -224,7 +227,7 @@ function start() {
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
 
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
-    const flight = clamp((d - 0.15) / 0.75);
+    const flight = clamp((d - 0.35) / 0.55);
     let bloom = (0.12 * (1 - smooth(clamp(d / 0.6))) + 0.3 * Math.sin(Math.PI * flight)) * (moving ? 1 : 0.5);
     if (d >= 0.88 || !glow) bloom = 0;
     // The glow is the only costly part; drop it if frames take longer than ~30 ms.
@@ -249,6 +252,7 @@ function start() {
       rot: isUpright ? along : 0,
       quat: isUpright ? [0, 0, 0, 1] : slerp(shownQ, standing, upright),
       upright: isUpright,
+      turn: isUpright ? turnBack : 0,
       ballX: ballX * (1 - upright),
       floorZ: rolled,
       intro: 1,
@@ -368,11 +372,24 @@ function start() {
 
   sync();
 
+  // Everything starts at once: the thumbnails download while three.js loads.
+  // The globe uses the grid's own thumbnails (same file, same format), so each
+  // photo is downloaded once; they are made eager so they load right away.
   const boot = async () => {
     try {
+      const images = data.photos.map((p, i) => {
+        const own = tiles[i]?.querySelector('img');
+        if (own) {
+          own.loading = 'eager';
+          return own;
+        }
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = p.thumbs[0];
+        return img;
+      });
       const { createGlobe } = await import('./globe.ts');
-      const thumbs = data.photos.map((p) => (phone ? p.thumbs[0] : p.thumbs[p.thumbs.length - 1]));
-      globe = await createGlobe(canvas, thumbs, phone ? 120 : 220, phone ? 256 : 512, !phone);
+      globe = await createGlobe(canvas, images, phone ? 120 : 220, phone ? 256 : 384, !phone);
       shown = progress();
       canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault();
@@ -387,6 +404,5 @@ function start() {
       stop();
     }
   };
-  if (document.readyState === 'complete') boot();
-  else window.addEventListener('load', boot, { once: true });
+  boot();
 }
