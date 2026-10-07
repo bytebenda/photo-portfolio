@@ -19,7 +19,7 @@ function start() {
 
   if (!data.photos?.length) return stop();
 
-  const ROLL = (2 * Math.PI) / 12; // rolls towards the viewer, one turn per 12 seconds
+  const ROLL = (2 * Math.PI) / 18; // rolls towards the viewer, one turn per 18 seconds
   const SPRING = 10; // rad/s; the shown progress trails the scroll by a few hundred ms
   const MAX_SPEED = 1.6; // progress per second: a full swipe still takes at least 0.6 s
 
@@ -29,6 +29,8 @@ function start() {
   let last = 0;
   let orient: Quat = [0, 0, 0, 1]; // the ball's orientation as it rolls
   let rolled = 0; // distance rolled forward, pixels: moves the floor
+  let scrollSpin = 0; // extra roll from scrolling down, rad/s
+  let lastP = 0;
   let ballX = 0; // sideways position, pixels, following the cursor
   let ballTarget = 0;
   let spinV = 0; // momentum from a drag, rad/s
@@ -207,6 +209,14 @@ function start() {
       orient = turn(orient, 1, 0, 0, a);
       rolled -= a * r;
     }
+    // Scrolling down flicks the ball into a faster roll that fades over about
+    // two seconds. It is gone by 20% of the scroll, before the ball opens, and
+    // scrolling up gives no kick, so that animation stays as it was.
+    if (moving && intro >= 1 && p > lastP) scrollSpin = Math.min(12, scrollSpin + (p - lastP) * 30);
+    lastP = p;
+    scrollSpin *= Math.exp(-dt * 1.2);
+    const spinRoom = 1 - smooth(clamp(d / 0.2));
+    if (scrollSpin > 1e-3 && spinRoom > 0) orient = turn(orient, 1, 0, 0, scrollSpin * dt * spinRoom);
     const reach = Math.max(0, w / 2 - r - 24);
     const nextX = ballX + (clamp(ballTarget, -1, 1) * reach * free - ballX) * Math.min(1, dt * 2.5);
     if (nextX !== ballX) orient = turn(orient, 0, 0, -1, (nextX - ballX) / r);
@@ -397,7 +407,7 @@ function start() {
       const loaderText = document.getElementById('hero-loader-text');
       const showLoad = () => {
         loader?.style.setProperty('--load', (code * 0.3 + (decoded / images.length) * 0.7).toFixed(3));
-        if (loaderText) loaderText.textContent = `Loading photos ${decoded} / ${images.length}`;
+        if (loaderText) loaderText.textContent = 'Loading';
       };
       images.forEach((img) => {
         const done = () => {

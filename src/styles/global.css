@@ -157,10 +157,11 @@ a {
   width: 288px;
   max-height: min(70vh, 560px);
   z-index: 30;
+  /* Top buttons and Close stay in view; only the list in between scrolls. */
+  display: flex;
+  flex-direction: column;
   padding: 6px 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(36, 36, 40, 0.58);
@@ -179,7 +180,15 @@ a {
   }
 }
 
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .panel-top {
+  flex: none;
   display: flex;
   justify-content: space-between;
   padding: 0 6px;
@@ -221,7 +230,7 @@ a {
   background: rgba(255, 255, 255, 0.08);
 }
 .panel-bottom {
-  margin-top: 4px;
+  flex: none;
   padding: 6px 6px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
