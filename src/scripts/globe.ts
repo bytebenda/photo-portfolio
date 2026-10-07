@@ -13,9 +13,11 @@ import {
   InstancedBufferGeometry,
   LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
+  Group,
   Mesh,
   PerspectiveCamera,
   PlaneGeometry,
+  Quaternion,
   Scene,
   ShaderMaterial,
   Vector2,
@@ -29,9 +31,10 @@ export type Target = { x: number; y: number; size: number; order: number } | nul
 export type Frame = {
   p: number; // 0 globe, 1 every tile on its grid square
   vel: number; // speed of p per second, for the motion stretch
-  rot: number; // spin around the vertical axis, radians
-  tiltX: number;
-  tiltY: number;
+  rot: number; // turn around the vertical axis inside the shader, radians (used once upright)
+  quat: [number, number, number, number]; // orientation of the rolling ball
+  upright: boolean; // the ball is back to its shader turn only, ready to unroll
+  ballX: number; // sideways position of the ball in pixels
   intro: number; // fade-in after loading, 0 to 1
   centerY: number; // globe centre offset in pixels (below the header)
   bloom: number; // glow strength, desktop only
@@ -42,6 +45,7 @@ export type Frame = {
   backdrop: number; // strength of the floor and glow behind the globe, 0 to 1
   time: number; // seconds, moves the floor and glow
   floorDrop: number; // pixels the floor has sunk while scrolling
+  floorZ: number; // distance the ball has rolled forward, pixels: moves the grid
   shadowY: number; // height of the globe above the floor during the drop-in, pixels
   shadowScale: number; // squash of the globe, widens its shadow
 };
@@ -62,7 +66,11 @@ const UNROLL = 0.6;
 
 const vertexShader = /* glsl */ `
   #define PI 3.141592653589793
-  attribute vec4 aGeo;      // theta, phi, side, photo index
+  attribute vec4 aGeo;      // centre theta, centre phi, unused, photo index
+  attribute vec3 aN;        // cube face normal
+  attribute vec3 aU;        // cube face axes
+  attribute vec3 aV;
+  attribute vec3 aIJ;       // tile column, row and tiles per face side
   attribute vec2 aCell;     // atlas cell origin (uv)
   attribute vec4 aTarget;   // grid square: x, y, size, 1 for a primary with a visible square
   attribute float aOrder;   // start of the flight within its window, 0 to 1
@@ -116,6 +124,14 @@ const vertexShader = /* glsl */ `
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
   }
 
+  // A point of this tile on the unit sphere: the cube face grid, spread with
+  // equal angles so the tiles are close to the same size, then normalised.
+  vec3 cubeDir(vec2 p) {
+    vec2 ab = (aIJ.xy + 0.5 + p) / aIJ.z * 2.0 - 1.0;
+    ab = tan(ab * PI * 0.25);
+    return normalize(aN + ab.x * aU + ab.y * aV);
+  }
+
   vec3 rotateAround(vec3 v, vec3 axis, float a) {
     return v * cos(a) + cross(axis, v) * sin(a) + axis * dot(axis, v) * (1.0 - cos(a));
   }
@@ -123,7 +139,6 @@ const vertexShader = /* glsl */ `
   void main() {
     float th = mod(aGeo.x + uRot + PI, 2.0 * PI) - PI;
     float ph = aGeo.y;
-    float side = aGeo.z;
     float photo = aGeo.w;
 
     // Unroll: the back opens first, the front last, so the globe peels open
@@ -140,7 +155,14 @@ const vertexShader = /* glsl */ `
     float intro = mix(0.9, 1.0, uIntro);
     vec3 c1 = c * intro;
     c1.y += uCenterY;
-    vec3 local1 = (position.x * east + position.y * north) * side * intro;
+    // Each corner sits on the surface itself, so neighbouring tiles share their
+    // edges exactly: no gaps on the ball, none in the sheet. Longitude is taken
+    // relative to the tile centre, so a tile on the seam is not torn apart.
+    vec3 dv = cubeDir(position.xy);
+    float phv = asin(clamp(dv.y, -1.0, 1.0));
+    float dth = mod(atan(dv.x, dv.z) - aGeo.x + PI, 2.0 * PI) - PI;
+    if (cos(phv) < 1e-3) dth = 0.0;
+    vec3 local1 = (surface(th + dth, phv, u) - c) * intro;
 
     // Each tile has its own window on the timeline.
     float primary = aTarget.w;
@@ -179,7 +201,7 @@ const vertexShader = /* glsl */ `
     vec3 vn = normalize(normalMatrix * n);
     float facing = vn.z;
     float key = max(dot(vn, normalize(vec3(-0.35, 0.45, 0.82))), 0.0);
-    float depth = clamp((c.z + uR) / (2.0 * uR), 0.0, 1.0);
+    float depth = clamp(vn.z * 0.5 + 0.5, 0.0, 1.0); // from the view, so it holds while the ball rolls
     float lit = facing < 0.0 ? 0.18 + 0.12 * depth : mix(0.32, 1.0, key) * mix(0.55, 1.0, depth);
     vLight = mix(lit, 1.0, max(u, qe * primary));
     vAlpha = uIntro * (1.0 - qe * (1.0 - primary));
@@ -249,7 +271,8 @@ const backdropFragment = /* glsl */ `
   uniform float uTanH;
   uniform float uAspect;
   uniform float uFloorY;
-  uniform float uYaw;
+  uniform float uFloorZ;
+  uniform float uBallX;
   uniform float uShadowY;
   uniform float uShadowS;
   uniform float uCenterY;
@@ -284,11 +307,9 @@ const backdropFragment = /* glsl */ `
       float d = uFloorY / dir.y;
       vec3 hit = vec3(0.0, 0.0, uCamZ) + dir * d;
       vec2 q = hit.xz;
-      float c = cos(uYaw);
-      float s = sin(uYaw);
-      vec2 g = mat2(c, -s, s, c) * q;
       float cell = uR / 3.0;
-      g.y += t * cell * 0.25; // drifting towards the viewer
+      vec2 g = vec2(q.x, q.y - uFloorZ); // moves towards the viewer as the ball rolls on
+      q.x -= uBallX;
       float minor = gridLine(g / cell);
       float major = gridLine(g / (cell * 4.0));
       float far = exp(-max(0.0, -hit.z) / (uR * 3.5));
@@ -361,20 +382,20 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   const scene = new Scene();
   const camera = new PerspectiveCamera(FOV, 1, 1, 10000);
 
-  // Tiles sit in rows of latitude, each row as long as its circle allows, so the
-  // globe looks tiled and the unrolled sheet is an orderly map. Every run of n
-  // tiles holds each photo once, in a shuffled order so copies do not line up.
-  const step = Math.sqrt((4 * Math.PI) / Math.max(count, n)); // tile pitch, radians
-  const bands = Math.max(3, Math.round(Math.PI / step));
-  const layout: [number, number][] = [];
-  for (let k = 0; k < bands; k++) {
-    const phi = -Math.PI / 2 + ((k + 0.5) * Math.PI) / bands;
-    const m = Math.max(1, Math.round((2 * Math.PI * Math.cos(phi)) / step));
-    for (let j = 0; j < m; j++) layout.push([-Math.PI + ((j + 0.5 + (k % 2) * 0.5) * 2 * Math.PI) / m, phi]);
-  }
-  while (layout.length < n) layout.push([Math.random() * 2 * Math.PI - Math.PI, Math.random() - 0.5]);
-  const total = layout.length;
-  const pitch = Math.min(step, Math.PI / bands);
+  // Tiles on a cube sphere: each face of a cube split into a grid and puffed
+  // out into a ball, so the tiles close up without gaps and there are no
+  // pinched poles when the ball rolls. Every run of n tiles holds each photo
+  // once, in a shuffled order so copies do not line up.
+  const N = Math.max(2, Math.round(Math.sqrt(count / 6)), Math.ceil(Math.sqrt(n / 6)));
+  const faces: [number[], number[], number[]][] = [
+    [[0, 0, 1], [1, 0, 0], [0, 1, 0]], // front
+    [[1, 0, 0], [0, 0, -1], [0, 1, 0]], // right
+    [[0, 0, -1], [-1, 0, 0], [0, 1, 0]], // back
+    [[-1, 0, 0], [0, 0, 1], [0, 1, 0]], // left
+    [[0, 1, 0], [1, 0, 0], [0, 0, -1]], // top
+    [[0, -1, 0], [1, 0, 0], [0, 0, 1]], // bottom
+  ];
+  const total = 6 * N * N;
   let seed = 7;
   const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
   const assign: number[] = [];
@@ -388,18 +409,35 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   }
 
   const geo = new Float32Array(total * 4);
+  const axN = new Float32Array(total * 3);
+  const axU = new Float32Array(total * 3);
+  const axV = new Float32Array(total * 3);
+  const ij = new Float32Array(total * 3);
+  const dirs = new Float32Array(total * 3); // tile centres on the unit sphere
   const cells = new Float32Array(total * 2);
   const targets = new Float32Array(total * 4);
   const order = new Float32Array(total);
   for (let i = 0; i < total; i++) {
-    const [theta, phi] = layout[i];
+    const [fn, fu, fv] = faces[Math.floor(i / (N * N))];
+    const col = i % N;
+    const row = Math.floor(i / N) % N;
+    const a = Math.tan((((col + 0.5) / N) * 2 - 1) * (Math.PI / 4));
+    const b = Math.tan((((row + 0.5) / N) * 2 - 1) * (Math.PI / 4));
+    const d = [0, 1, 2].map((k) => fn[k] + a * fu[k] + b * fv[k]);
+    const len = Math.hypot(d[0], d[1], d[2]);
+    const dir = d.map((v) => v / len);
+    dirs.set(dir, i * 3);
+    axN.set(fn, i * 3);
+    axU.set(fu, i * 3);
+    axV.set(fv, i * 3);
+    ij.set([col, row, N], i * 3);
     const photo = assign[i];
-    geo.set([theta, phi, 0, photo], i * 4);
+    geo.set([Math.atan2(dir[0], dir[2]), Math.asin(dir[1]), 0, photo], i * 4);
     cells.set([(photo % atlas.cols) / atlas.cols, Math.floor(photo / atlas.cols) / atlas.rows], i * 2);
     order[i] = random();
   }
 
-  const base = new PlaneGeometry(1, 1);
+  const base = new PlaneGeometry(1, 1, 4, 4); // subdivided, so each tile curves with the ball
   const geometry = new InstancedBufferGeometry();
   geometry.index = base.index;
   geometry.setAttribute('position', base.getAttribute('position'));
@@ -409,6 +447,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   const copyOrder = order.slice();
   const aOrder = new InstancedBufferAttribute(order, 1);
   geometry.setAttribute('aGeo', aGeo);
+  geometry.setAttribute('aN', new InstancedBufferAttribute(axN, 3));
+  geometry.setAttribute('aU', new InstancedBufferAttribute(axU, 3));
+  geometry.setAttribute('aV', new InstancedBufferAttribute(axV, 3));
+  geometry.setAttribute('aIJ', new InstancedBufferAttribute(ij, 3));
   geometry.setAttribute('aCell', new InstancedBufferAttribute(cells, 2));
   geometry.setAttribute('aTarget', aTarget);
   geometry.setAttribute('aOrder', aOrder);
@@ -436,7 +478,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uTanH: { value: Math.tan((FOV * Math.PI) / 360) },
     uAspect: { value: 1 },
     uFloorY: { value: -300 },
-    uYaw: { value: 0 },
+    uFloorZ: { value: 0 },
+    uBallX: { value: 0 },
     uShadowY: { value: 0 },
     uShadowS: { value: 1 },
     uCenterY: { value: 0 },
@@ -484,7 +527,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
 
   // The mix of the photos facing the viewer, left half and right half, made a
   // little more colourful and kept at one brightness, eased over about a second.
+  const turn = new Quaternion();
+  const facing = new Vector3();
   function updateGlow(rot: number) {
+    turn.setFromAxisAngle(new Vector3(0, 1, 0), rot).premultiply(mesh.quaternion);
     const now = performance.now();
     const dt = glowT ? Math.min(0.1, (now - glowT) / 1000) : 1;
     glowT = now;
@@ -493,11 +539,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     const best = [-1, -1];
     const score = [0, 0];
     for (let i = 0; i < total; i++) {
-      const th = geo[i * 4] + rot;
-      const ph = geo[i * 4 + 1];
-      const z = Math.cos(ph) * Math.cos(th);
+      facing.set(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]).applyQuaternion(turn);
+      const z = facing.z;
       if (z <= 0.2) continue;
-      const x = Math.cos(ph) * Math.sin(th);
+      const x = facing.x;
       const photo = geo[i * 4 + 3];
       const r0 = colours[photo * 3];
       const g0 = colours[photo * 3 + 1];
@@ -529,7 +574,9 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   const pixels = new Uint8Array(PICK_SIZE * PICK_SIZE * 4);
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;
-  scene.add(mesh);
+  const ball = new Group();
+  ball.add(mesh);
+  scene.add(ball);
 
   // PlaneGeometry uv has v = 1 at the top; the atlas is not flipped, so flip v here.
   const uv = geometry.getAttribute('uv');
@@ -573,16 +620,13 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     camera.position.set(0, 0, h / 2 / Math.tan((FOV * Math.PI) / 360));
     camera.far = camera.position.z * 4;
     camera.updateProjectionMatrix();
-    // The globe fills the space below the header; tiles cover it with small gaps.
+    // The globe fills the space below the header, above a strip of floor.
     const r = globeRadius(w, h);
     uniforms.uR.value = r;
     backdropUniforms.uR.value = r;
     backdropUniforms.uAspect.value = w / h;
     backdropUniforms.uCamZ.value = camera.position.z;
     uniforms.uLift.value = Math.min(w, h) * 0.5;
-    const side = pitch * r * 0.92;
-    for (let i = 0; i < total; i++) geo[i * 4 + 2] = side;
-    aGeo.needsUpdate = true;
   }
 
   // For each photo the copy closest to the front becomes the one that flies to
@@ -620,23 +664,27 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   function render(f: Frame) {
     uniforms.uP.value = f.p;
     uniforms.uVel.value = f.vel;
-    uniforms.uRot.value = f.rot;
     uniforms.uIntro.value = f.intro;
-    uniforms.uCenterY.value = f.centerY;
     backdrop.visible = f.backdrop > 0.002;
     if (backdrop.visible) {
-      updateGlow(f.rot);
+      updateGlow(f.upright ? f.rot : 0);
       backdropUniforms.uAmount.value = f.backdrop;
       backdropUniforms.uTime.value = f.time % 1000;
       backdropUniforms.uCenterY.value = f.centerY;
       backdropUniforms.uFloorY.value = f.centerY - uniforms.uR.value - 4 - f.floorDrop;
-      backdropUniforms.uYaw.value = f.tiltY;
+      backdropUniforms.uFloorZ.value = f.floorZ;
+      backdropUniforms.uBallX.value = f.ballX;
       backdropUniforms.uShadowY.value = Math.max(0, f.shadowY);
       backdropUniforms.uShadowS.value = f.shadowScale;
     }
-    mesh.rotation.set(f.tiltX, f.tiltY, 0);
-    mesh.position.set(0, f.offsetY, 0);
-    mesh.scale.set(f.scaleX, f.scaleY, 1);
+    // While the ball rolls it turns around its own centre, so the centre offset
+    // lives in the group; once upright the shader takes it over, which is where
+    // the flight targets expect it.
+    uniforms.uRot.value = f.upright ? f.rot : 0;
+    uniforms.uCenterY.value = f.upright ? f.centerY : 0;
+    mesh.quaternion.set(...f.quat);
+    ball.position.set(f.ballX, f.offsetY + (f.upright ? 0 : f.centerY), 0);
+    ball.scale.set(f.scaleX, f.scaleY, 1);
     if (bloom && f.bloom > 0.004) {
       bloom.pass.strength = f.bloom;
       bloom.composer.render();
@@ -674,7 +722,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     }
     if (photo < 0) return null;
     const z = camera.position.z;
-    return { photo, size: (geo[2] * z) / Math.max(1, z - uniforms.uR.value) };
+    const side = (uniforms.uR.value * Math.PI) / (2 * N);
+    return { photo, size: (side * z) / Math.max(1, z - uniforms.uR.value) };
   }
 
   function dispose() {

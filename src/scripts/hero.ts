@@ -1,4 +1,4 @@
-// The globe hero: scroll progress, spin, drag, cursor tilt and the hand-off to
+// The globe hero: scroll progress, rolling, drag, following the cursor and the hand-off to
 // the grid. The inline script in Hero.astro adds the `hero` class before the
 // first paint when the hero should run; Three.js loads after the page.
 import type { Globe, Target } from './globe.ts';
@@ -19,7 +19,7 @@ function start() {
 
   if (!data.photos?.length) return stop();
 
-  const SPIN = (2 * Math.PI) / 90; // one turn per 90 seconds
+  const ROLL = (2 * Math.PI) / 40; // rolls forward one turn per 40 seconds
   const SPRING = 10; // rad/s; the shown progress trails the scroll by a few hundred ms
   const MAX_SPEED = 1.6; // progress per second: a full swipe still takes at least 0.6 s
 
@@ -27,7 +27,10 @@ function start() {
   let heroH = hero.offsetHeight;
   let raf = 0;
   let last = 0;
-  let rot = 0;
+  let orient: Quat = [0, 0, 0, 1]; // the ball's orientation as it rolls
+  let rolled = 0; // distance rolled forward, pixels: moves the floor
+  let ballX = 0; // sideways position, pixels, following the cursor
+  let ballTarget = 0;
   let spinV = 0; // momentum from a drag, rad/s
   let dragging = false;
   let dragX = 0;
@@ -38,8 +41,6 @@ function start() {
   let downT = 0;
   let hoverT = 0;
   let backdropT = 0;
-  let tilt = { x: 0, y: 0 };
-  let tiltTarget = { x: 0, y: 0 };
   let intro = 0;
   let readyAt = 0;
   let shown = 0; // progress drawn, following the scroll progress through a spring
@@ -52,6 +53,35 @@ function start() {
   // Same as globeRadius() in globe.ts, which loads later.
   const radius = (w: number, h: number) => Math.min(w * 0.45, (h - 64) * 0.4);
   const smooth = (t: number) => t * t * (3 - 2 * t);
+  // Quaternions as [x, y, z, w], enough for rolling.
+  type Quat = [number, number, number, number];
+  const axisAngle = (x: number, y: number, z: number, a: number): Quat => {
+    const s = Math.sin(a / 2);
+    return [x * s, y * s, z * s, Math.cos(a / 2)];
+  };
+  const mul = (a: Quat, b: Quat): Quat => [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+  const normal = (q: Quat): Quat => {
+    const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+    return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+  };
+  const slerp = (a: Quat, b: Quat, t: number): Quat => {
+    let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+    const c = dot < 0 ? (b.map((v) => -v) as Quat) : b;
+    dot = Math.abs(dot);
+    if (dot > 0.9995) return normal(a.map((v, i) => v + (c[i] - v) * t) as Quat);
+    const th = Math.acos(dot);
+    const s0 = Math.sin((1 - t) * th) / Math.sin(th);
+    const s1 = Math.sin(t * th) / Math.sin(th);
+    return a.map((v, i) => v * s0 + c[i] * s1) as Quat;
+  };
+  // A world-space turn applied to the ball: rolling forward is a turn around
+  // -x, rolling right a turn around -z, a sideways drag a turn around y.
+  const turn = (q: Quat, x: number, y: number, z: number, a: number) => normal(mul(axisAngle(x, y, z, a), q));
   const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   // Drop-in on load: the globe falls in from above, squashes on impact, bounces
@@ -76,7 +106,7 @@ function start() {
     } else if (t < FALL + HOP) {
       const s = (t - FALL) / HOP;
       pose.y = h * 0.17 * 4 * s * (1 - s);
-      pose.spin = 6 * Math.PI * easeInOut(s); // three turns in the air
+      pose.spin = 6 * Math.PI * easeInOut(s); // three forward flips in the air
     } else if (t < FALL + HOP + HOP2) {
       const s = (t - FALL - HOP) / HOP2;
       pose.y = h * 0.04 * 4 * s * (1 - s);
@@ -160,21 +190,37 @@ function start() {
     // Scrolling during the drop-in takes the globe straight to rest.
     const rest = 1 - smooth(clamp(d / 0.08));
 
-    // Slow spin plus drag momentum; both stop while the globe unrolls, so the
-    // seam stays at the back. Reduce Motion keeps only what follows the
-    // visitor's own scrolling and dragging.
+    // The ball rolls forward on the floor and, on desktop, rolls sideways
+    // towards the cursor; a drag turns it and throws it. All of it stops while
+    // the globe unrolls. Reduce Motion keeps only what follows the visitor's
+    // own scrolling and dragging.
     const free = 1 - smooth(clamp(d / 0.1));
+    const r = radius(w, h);
     if (!dragging) {
       spinV *= Math.exp(-dt * 2.2);
-      rot += ((moving ? SPIN : 0) + spinV) * free * dt;
+      if (spinV) orient = turn(orient, 0, 1, 0, spinV * free * dt);
     }
-    tilt.x += (tiltTarget.x - tilt.x) * Math.min(1, dt * 4);
-    tilt.y += (tiltTarget.y - tilt.y) * Math.min(1, dt * 4);
-    const lean = 1 - smooth(clamp(d / 0.5));
+    if (moving && intro >= 1) {
+      const a = ROLL * free * dt;
+      orient = turn(orient, -1, 0, 0, a);
+      rolled += a * r;
+    }
+    const reach = Math.max(0, w / 2 - r - 24);
+    const nextX = ballX + (clamp(ballTarget, -1, 1) * reach * free - ballX) * Math.min(1, dt * 2.5);
+    if (nextX !== ballX) orient = turn(orient, 0, 0, -1, (nextX - ballX) / r);
+    ballX = nextX;
 
-    const shownRot = rot + pose.spin;
+    // The drop-in flips the ball forward three times. To unroll, the ball comes
+    // upright over the first bit of the scroll: it keeps only its turn around
+    // the vertical axis, which the shader takes over, so the seam is at the back.
+    const shownQ = turn(orient, -1, 0, 0, pose.spin);
+    const upright = smooth(clamp(d / 0.08));
+    const yaw = 2 * Math.atan2(shownQ[1], shownQ[3]);
+    const standing = normal([0, shownQ[1], 0, shownQ[3]]);
+    const isUpright = upright >= 1;
+    if (isUpright && introT >= INTRO) orient = standing;
 
-    if (d < 0.2) globe.pickPrimaries(shownRot);
+    if (d < 0.2) globe.pickPrimaries(isUpright ? yaw : 0);
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
 
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
@@ -200,9 +246,11 @@ function start() {
       shadowY: pose.y * rest,
       shadowScale: 1 + (pose.sx - 1) * rest,
       vel: Math.abs(shownV),
-      rot: shownRot,
-      tiltX: tilt.x * lean,
-      tiltY: tilt.y * lean,
+      rot: yaw,
+      quat: isUpright ? [0, 0, 0, 1] : slerp(shownQ, standing, upright),
+      upright: isUpright,
+      ballX: ballX * (1 - upright),
+      floorZ: rolled,
       intro: 1,
       centerY: -32,
       bloom,
@@ -275,7 +323,7 @@ function start() {
     const now = performance.now();
     const r = radius(canvas.clientWidth, canvas.clientHeight);
     const d = (e.clientX - dragX) / r;
-    rot += d;
+    orient = turn(orient, 0, 1, 0, d);
     dragV = d / Math.max(0.008, (now - dragT) / 1000);
     dragX = e.clientX;
     dragT = now;
@@ -311,10 +359,10 @@ function start() {
   }
   canvas.addEventListener('pointerleave', () => canvas.classList.remove('is-over-photo'));
 
-  // On desktop the globe leans a little towards the cursor.
+  // On desktop the ball rolls left and right after the cursor.
   window.addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse' || !fine.matches || still()) return;
-    tiltTarget = { x: (e.clientY / window.innerHeight - 0.5) * 0.3, y: (e.clientX / window.innerWidth - 0.5) * 0.3 };
+    ballTarget = (e.clientX / window.innerWidth - 0.5) * 2;
     if (progress() < 1) kick();
   });
 
