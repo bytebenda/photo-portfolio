@@ -1,4 +1,6 @@
-// All interaction on the page: hiding header, scroll gap, filters, photo viewer.
+// All interaction on the page: filters and the photo viewer. The header stays
+// in view and the grid keeps its spacing while scrolling, so scrolling never
+// makes the page lay itself out again.
 // No framework: the HTML is rendered at build time and this script enhances it.
 
 type Key = 'loc' | 'cat' | 'year' | 'style';
@@ -37,105 +39,10 @@ const motion = () => !reduceMotion.matches;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const header = $<HTMLElement>('header');
 const grid = $<HTMLElement>('grid');
 const empty = $<HTMLElement>('empty');
 const tiles = Array.from(grid.querySelectorAll<HTMLAnchorElement>('.tile'));
 const hero = document.getElementById('hero');
-
-/* ------------------------------------------------------------------ */
-/* Hiding header and scroll gap                                        */
-/* ------------------------------------------------------------------ */
-
-let lastY = window.scrollY;
-let lastT = performance.now();
-let travel = 0; // distance scrolled in the current direction
-let gap = 2;
-let gapVelocity = 0;
-let gapTarget = 2;
-let raf = 0;
-let idleTimer = 0;
-const REST_GAP = 2;
-const MAX_GAP = 8;
-
-function setHeaderHidden(hidden: boolean) {
-  header.classList.toggle('is-hidden', hidden);
-  hoverReveal = false;
-}
-
-// On desktop the hidden header slides in when the cursor reaches the top edge,
-// and slides out again once the cursor moves away below it.
-let hoverReveal = false;
-const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
-window.addEventListener('pointermove', (e) => {
-  if (e.pointerType !== 'mouse' || !finePointer.matches || root.classList.contains('viewer-open')) return;
-  if (e.clientY <= 24 && header.classList.contains('is-hidden')) {
-    setHeaderHidden(false);
-    hoverReveal = true;
-  } else if (hoverReveal && e.clientY > 96 && !openPanel && window.scrollY >= 10) {
-    setHeaderHidden(true);
-  }
-});
-
-function stepGap() {
-  // Damped spring towards the target gap; settles in about 300 ms.
-  gapVelocity += (gapTarget - gap) * 0.18;
-  gapVelocity *= 0.72;
-  gap += gapVelocity;
-  if (gapTarget === REST_GAP && Math.abs(gap - REST_GAP) < 0.02 && Math.abs(gapVelocity) < 0.02) {
-    gap = REST_GAP;
-    gapVelocity = 0;
-    grid.style.setProperty('--gap', `${REST_GAP}px`);
-    raf = 0;
-    return;
-  }
-  grid.style.setProperty('--gap', `${gap.toFixed(2)}px`);
-  raf = requestAnimationFrame(stepGap);
-}
-function kickGap() {
-  if (!raf) raf = requestAnimationFrame(stepGap);
-}
-
-window.addEventListener(
-  'scroll',
-  () => {
-    if (root.classList.contains('viewer-open')) return;
-    const y = window.scrollY;
-    const t = performance.now();
-    const dy = y - lastY;
-    const dt = Math.max(1, t - lastT);
-    lastY = y;
-    lastT = t;
-
-    // Over the globe hero the header stays put and the gap stays at rest.
-    if (hero && root.classList.contains('hero') && y <= hero.offsetHeight) {
-      travel = 0;
-      setHeaderHidden(false);
-      return;
-    }
-
-    if (y < 10) {
-      travel = 0;
-      setHeaderHidden(false);
-    } else {
-      travel = dy > 0 === travel > 0 ? travel + dy : dy;
-      if (travel > 10 && !openPanel) setHeaderHidden(true);
-      else if (travel < -10) setHeaderHidden(false);
-    }
-
-    // While the globe is still handing over, the grid squares are its landing
-    // spots, so they must not move.
-    if (!motion() || root.classList.contains('hero-on')) return;
-    gapTarget = Math.min(MAX_GAP, REST_GAP + (Math.abs(dy) / dt) * 2.5);
-    window.clearTimeout(idleTimer);
-    idleTimer = window.setTimeout(() => {
-      gapTarget = REST_GAP;
-      kickGap();
-    }, 90);
-    kickGap();
-  },
-  { passive: true },
-);
 
 /* ------------------------------------------------------------------ */
 /* Filters                                                             */
@@ -200,7 +107,6 @@ function setPanel(filter: HTMLElement | null) {
   if (filter) {
     filter.querySelector('.panel')!.removeAttribute('hidden');
     filter.querySelector('.pill')!.setAttribute('aria-expanded', 'true');
-    setHeaderHidden(false);
   }
 }
 
@@ -545,7 +451,6 @@ async function closeViewer({ fromHistory = false } = {}) {
   current = null;
   document.title = data.siteTitle;
   document.dispatchEvent(new Event('viewer:closed'));
-  lastY = window.scrollY;
   tiles[i].focus({ preventScroll: true });
 }
 

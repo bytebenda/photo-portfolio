@@ -363,8 +363,13 @@ function start() {
     kick();
   }
 
+  // Down in the gallery the globe is gone: scrolling there must not wake it up
+  // and draw a hidden frame on every scroll event.
   window.addEventListener('scroll', () => {
-    if (!globe) sync();
+    if (!globe || (progress() >= 1 && !root.classList.contains('hero-on'))) {
+      sync();
+      return;
+    }
     kick();
   }, { passive: true });
   window.addEventListener('resize', resize);
