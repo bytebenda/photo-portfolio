@@ -38,6 +38,8 @@ export type Frame = {
   offsetY: number;
   scaleX: number;
   scaleY: number;
+  smoke: number; // strength of the smoke behind the globe, 0 to 1
+  time: number; // seconds, moves the smoke
 };
 
 const FOV = 30;
@@ -220,6 +222,65 @@ const pickShader = /* glsl */ `
   }
 `;
 
+// Smoke behind the globe: one full-screen quad drawn before the tiles. Domain-
+// warped value noise gives slow, curling wisps that rise a little, densest
+// around the globe and gone towards the edges of the screen.
+const smokeVertex = /* glsl */ `
+  varying vec2 vP;
+  void main() {
+    vP = position.xy;
+    gl_Position = vec4(position.xy * 2.0, 0.999, 1.0);
+  }
+`;
+
+const smokeFragment = (octaves: number) => /* glsl */ `
+  uniform float uTime;
+  uniform float uAmount;
+  uniform float uR;
+  uniform vec2 uRes;
+  uniform vec2 uCenter;
+  varying vec2 vP;
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+    for (int i = 0; i < ${octaves}; i++) {
+      v += a * noise(p);
+      p = m * p;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    vec2 d = (vP * uRes - uCenter) / uR; // in globe radii from its centre
+    float r = length(d);
+    float t = uTime;
+    vec2 q = d * 1.3;
+    vec2 w = vec2(fbm(q + vec2(t * 0.05, -t * 0.03)), fbm(q + vec2(5.2 - t * 0.04, 1.3 + t * 0.05)));
+    float n = fbm(q * 1.2 + w * 1.8 + vec2(0.0, -t * 0.08));
+    float wisp = smoothstep(0.38, 0.85, n);
+    float around = smoothstep(2.4, 0.8, r);
+    float a = wisp * around * uAmount * 0.42;
+    vec3 col = mix(vec3(0.5, 0.56, 0.66), vec3(0.92, 0.94, 1.0), smoothstep(0.4, 0.9, n));
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
 async function loadAtlas(urls: string[], cell: number) {
   const n = urls.length;
   const cols = Math.ceil(Math.sqrt(n));
@@ -336,6 +397,26 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uCenterY: { value: 0 },
   };
   const material = new ShaderMaterial({ vertexShader, fragmentShader, uniforms, transparent: true, side: DoubleSide });
+  const smokeUniforms = {
+    uTime: { value: 0 },
+    uAmount: { value: 0 },
+    uR: { value: 300 },
+    uRes: { value: new Vector2(1, 1) },
+    uCenter: { value: new Vector2(0, 0) },
+  };
+  const smokeMaterial = new ShaderMaterial({
+    vertexShader: smokeVertex,
+    fragmentShader: smokeFragment(fx ? 5 : 4),
+    uniforms: smokeUniforms,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const smoke = new Mesh(new PlaneGeometry(1, 1), smokeMaterial);
+  smoke.frustumCulled = false;
+  smoke.renderOrder = -1;
+  scene.add(smoke);
+
   const pickMaterial = new ShaderMaterial({ vertexShader, fragmentShader: pickShader, uniforms, side: DoubleSide });
   const pickTarget = new WebGLRenderTarget(PICK_SIZE, PICK_SIZE);
   const pixels = new Uint8Array(PICK_SIZE * PICK_SIZE * 4);
@@ -388,6 +469,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     // The globe fills the space below the header; tiles cover it with small gaps.
     const r = Math.min(w, h - 64) * 0.45;
     uniforms.uR.value = r;
+    smokeUniforms.uR.value = r;
+    smokeUniforms.uRes.value.set(w, h);
     uniforms.uLift.value = Math.min(w, h) * 0.5;
     const side = pitch * r * 0.92;
     for (let i = 0; i < total; i++) geo[i * 4 + 2] = side;
@@ -432,6 +515,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uniforms.uRot.value = f.rot;
     uniforms.uIntro.value = f.intro;
     uniforms.uCenterY.value = f.centerY;
+    smokeUniforms.uAmount.value = f.smoke;
+    smokeUniforms.uTime.value = f.time % 1000;
+    smokeUniforms.uCenter.value.set(0, f.centerY);
+    smoke.visible = f.smoke > 0.002;
     mesh.rotation.set(f.tiltX, f.tiltY, 0);
     mesh.position.set(0, f.offsetY, 0);
     mesh.scale.set(f.scaleX, f.scaleY, 1);
@@ -450,12 +537,15 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
   function pick(x: number, y: number) {
     camera.setViewOffset(width, height, x - PICK, y - PICK, PICK_SIZE, PICK_SIZE);
     mesh.material = pickMaterial;
+    const smokeOn = smoke.visible;
+    smoke.visible = false;
     renderer.setRenderTarget(pickTarget);
     renderer.clear();
     renderer.render(scene, camera);
     renderer.readRenderTargetPixels(pickTarget, 0, 0, PICK_SIZE, PICK_SIZE, pixels);
     renderer.setRenderTarget(null);
     mesh.material = material;
+    smoke.visible = smokeOn;
     camera.clearViewOffset();
     let photo = -1;
     let best = Infinity;
@@ -476,6 +566,8 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     geometry.dispose();
     material.dispose();
     pickMaterial.dispose();
+    smoke.geometry.dispose();
+    smokeMaterial.dispose();
     pickTarget.dispose();
     atlas.texture.dispose();
     renderer.dispose();

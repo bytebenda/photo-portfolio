@@ -37,6 +37,7 @@ function start() {
   let downY = 0;
   let downT = 0;
   let hoverT = 0;
+  let smokeT = 0;
   let tilt = { x: 0, y: 0 };
   let tiltTarget = { x: 0, y: 0 };
   let intro = 0;
@@ -54,14 +55,14 @@ function start() {
   // Drop-in on load: the globe falls in from above, squashes on impact, bounces
   // high while spinning three times, lands with a small second bounce and settles
   // into the slow spin. Times in seconds from the moment the globe is ready.
-  const FALL = 0.65;
-  const HOP = 1.3;
-  const HOP2 = 0.42;
-  const INTRO = FALL + HOP + HOP2 + 0.25;
+  const FALL = 0.45;
+  const HOP = 0.8;
+  const HOP2 = 0.26;
+  const INTRO = FALL + HOP + HOP2 + 0.15;
   function introPose(t: number, h: number, r: number) {
     const pose = { y: 0, sx: 1, sy: 1, spin: 0 };
     const squash = (at: number, amount: number) => {
-      const k = Math.max(0, 1 - Math.abs(t - at) / 0.11);
+      const k = Math.max(0, 1 - Math.abs(t - at) / 0.08);
       pose.sy -= amount * k;
       pose.sx += amount * 0.6 * k;
     };
@@ -72,11 +73,11 @@ function start() {
       pose.sx -= 0.03 * s * s;
     } else if (t < FALL + HOP) {
       const s = (t - FALL) / HOP;
-      pose.y = h * 0.2 * 4 * s * (1 - s);
+      pose.y = h * 0.17 * 4 * s * (1 - s);
       pose.spin = 6 * Math.PI * easeInOut(s); // three turns in the air
     } else if (t < FALL + HOP + HOP2) {
       const s = (t - FALL - HOP) / HOP2;
-      pose.y = h * 0.045 * 4 * s * (1 - s);
+      pose.y = h * 0.04 * 4 * s * (1 - s);
       pose.spin = 6 * Math.PI;
     } else {
       pose.spin = 6 * Math.PI;
@@ -184,8 +185,15 @@ function start() {
       if (slow > 12) glow = false;
     }
 
+    // Smoke behind the globe: drifts in while the globe drops, thins out as
+    // soon as the visitor scrolls. Reduce Motion keeps it still.
+    if (moving) smokeT += dt;
+    const smoke = smooth(clamp(introT / INTRO)) * (1 - smooth(clamp(d / 0.35)));
+
     globe.render({
       p: d,
+      smoke,
+      time: smokeT,
       vel: Math.abs(shownV),
       rot: shownRot,
       tiltX: tilt.x * lean,
