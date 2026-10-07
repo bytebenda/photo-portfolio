@@ -663,6 +663,9 @@ html:not(.js) .glass-btn {
   touch-action: pan-y;
   cursor: grab;
 }
+.hero-canvas.is-over-photo {
+  cursor: pointer;
+}
 .hero-canvas.is-dragging {
   cursor: grabbing;
 }

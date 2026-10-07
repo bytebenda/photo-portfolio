@@ -20,6 +20,7 @@ import {
   ShaderMaterial,
   Vector2,
   WebGLRenderer,
+  WebGLRenderTarget,
 } from 'three';
 
 export type Target = { x: number; y: number; size: number; order: number } | null;
@@ -40,6 +41,8 @@ export type Frame = {
 };
 
 const FOV = 30;
+const PICK = 6; // pixels around a click that still count as a hit
+const PICK_SIZE = PICK * 2 + 1;
 
 // Timeline, as shares of p. Unrolling runs over [0, UNROLL]. Copies leave
 // between COPY_START and COPY_START + COPY_SPREAD; primaries start between
@@ -69,6 +72,8 @@ const vertexShader = /* glsl */ `
   varying float vAlpha;
   varying float vBlur;
   varying float vRim;
+  varying float vPhoto;
+  varying float vFacing;
 
   // A point on the surface between sphere (u = 0) and flat sheet (u = 1).
   // Latitude and longitude are bent with a curvature that drops to zero, so the
@@ -171,6 +176,8 @@ const vertexShader = /* glsl */ `
     // Depth blur: the far side of the globe and receding copies go soft.
     vBlur = (1.0 - u) * (1.0 - depth) * 2.5 + qe * (1.0 - primary) * 4.0;
     vRim = arc * primary * uFx;
+    vPhoto = photo;
+    vFacing = facing;
 
     vUv = uv;
     vCell = aCell;
@@ -196,6 +203,20 @@ const fragmentShader = /* glsl */ `
     float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
     col += vec3(0.75, 0.85, 1.0) * (1.0 - smoothstep(0.0, 0.035, edge)) * vRim * 0.35;
     gl_FragColor = vec4(col, vAlpha);
+  }
+`;
+
+// For clicks: each tile drawn in a colour that encodes its photo. The far side
+// is left out, so a click between two front tiles hits nothing.
+const pickShader = /* glsl */ `
+  varying float vPhoto;
+  varying float vFacing;
+  varying float vAlpha;
+
+  void main() {
+    if (vAlpha < 0.5 || vFacing < 0.0) discard;
+    float id = vPhoto + 1.0;
+    gl_FragColor = vec4(mod(id, 256.0) / 255.0, floor(id / 256.0) / 255.0, 0.0, 1.0);
   }
 `;
 
@@ -315,6 +336,9 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     uCenterY: { value: 0 },
   };
   const material = new ShaderMaterial({ vertexShader, fragmentShader, uniforms, transparent: true, side: DoubleSide });
+  const pickMaterial = new ShaderMaterial({ vertexShader, fragmentShader: pickShader, uniforms, side: DoubleSide });
+  const pickTarget = new WebGLRenderTarget(PICK_SIZE, PICK_SIZE);
+  const pixels = new Uint8Array(PICK_SIZE * PICK_SIZE * 4);
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;
   scene.add(mesh);
@@ -419,14 +443,45 @@ export async function createGlobe(canvas: HTMLCanvasElement, thumbs: string[], c
     }
   }
 
+  // The photo under a point in viewport pixels, as drawn by the last frame, and
+  // the size its tile has on screen. A small square around the point is
+  // rendered, and the nearest tile in it wins, so a click in the gap between two
+  // tiles still lands.
+  function pick(x: number, y: number) {
+    camera.setViewOffset(width, height, x - PICK, y - PICK, PICK_SIZE, PICK_SIZE);
+    mesh.material = pickMaterial;
+    renderer.setRenderTarget(pickTarget);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.readRenderTargetPixels(pickTarget, 0, 0, PICK_SIZE, PICK_SIZE, pixels);
+    renderer.setRenderTarget(null);
+    mesh.material = material;
+    camera.clearViewOffset();
+    let photo = -1;
+    let best = Infinity;
+    for (let i = 0; i < PICK_SIZE * PICK_SIZE; i++) {
+      const id = pixels[i * 4] + pixels[i * 4 + 1] * 256 - 1;
+      const d = ((i % PICK_SIZE) - PICK) ** 2 + (Math.floor(i / PICK_SIZE) - PICK) ** 2;
+      if (id >= 0 && id < n && d < best) {
+        best = d;
+        photo = id;
+      }
+    }
+    if (photo < 0) return null;
+    const z = camera.position.z;
+    return { photo, size: (geo[2] * z) / Math.max(1, z - uniforms.uR.value) };
+  }
+
   function dispose() {
     geometry.dispose();
     material.dispose();
+    pickMaterial.dispose();
+    pickTarget.dispose();
     atlas.texture.dispose();
     renderer.dispose();
   }
 
-  return { resize, pickPrimaries, setTargets, render, dispose, renderer };
+  return { resize, pickPrimaries, setTargets, render, pick, dispose, renderer };
 }
 
 export type Globe = Awaited<ReturnType<typeof createGlobe>>;

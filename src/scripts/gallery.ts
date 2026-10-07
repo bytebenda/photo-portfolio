@@ -457,6 +457,8 @@ function setStagePhoto(i: number) {
 function tileRect(i: number) {
   const t = tiles[i];
   if (!t || t.hidden) return null;
+  // At the top of the home page the globe covers the grid.
+  if (root.classList.contains('hero-on') && hero && window.scrollY < hero.offsetHeight * 0.5) return null;
   const r = t.getBoundingClientRect();
   if (r.bottom < 0 || r.top > window.innerHeight || r.width === 0) return null;
   return r;
@@ -480,9 +482,9 @@ function squareFrame(i: number, from: DOMRect, to: DOMRect): Keyframe {
 }
 const fullFrame: Keyframe = { transform: 'none', clipPath: 'inset(0px 0px 0px 0px)' };
 
-async function openPhoto(i: number, { push = true, animate = true } = {}) {
+async function openPhoto(i: number, { push = true, animate = true, from: start = null as DOMRect | null } = {}) {
   if (animating) return;
-  const from = animate && motion() ? tileRect(i) : null;
+  const from = animate && motion() ? start || tileRect(i) : null;
   setPanel(null);
   current = i;
   setStagePhoto(i);
@@ -536,6 +538,7 @@ async function closeViewer({ fromHistory = false } = {}) {
   root.classList.remove('viewer-open');
   current = null;
   document.title = data.siteTitle;
+  document.dispatchEvent(new Event('viewer:closed'));
   lastY = window.scrollY;
   tiles[i].focus({ preventScroll: true });
 }
@@ -567,6 +570,14 @@ tiles.forEach((t, i) => {
   t.addEventListener('pointerenter', () => preloadPreview(i), { passive: true });
   t.addEventListener('touchstart', () => preloadPreview(i), { passive: true });
   t.addEventListener('focus', () => preloadPreview(i));
+});
+
+// A click on a photo on the globe hero: the viewer grows out of that tile.
+document.addEventListener('hero:open', (e) => {
+  const { index, x, y, size } = (e as CustomEvent<{ index: number; x: number; y: number; size: number }>).detail;
+  if (current !== null || !photos[index]) return;
+  preloadPreview(index);
+  openPhoto(index, { from: new DOMRect(x - size / 2, y - size / 2, size, size) });
 });
 
 btnClose.addEventListener('click', (e) => {

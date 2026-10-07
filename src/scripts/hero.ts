@@ -33,6 +33,10 @@ function start() {
   let dragX = 0;
   let dragT = 0;
   let dragV = 0;
+  let downX = 0;
+  let downY = 0;
+  let downT = 0;
+  let hoverT = 0;
   let tilt = { x: 0, y: 0 };
   let tiltTarget = { x: 0, y: 0 };
   let intro = 0;
@@ -194,7 +198,8 @@ function start() {
       scaleY: 1 + (pose.sy - 1) * rest,
     });
 
-    const busy = moving && Math.min(p, shown) < 1 && !document.hidden;
+    // Nothing to draw behind the open viewer.
+    const busy = moving && Math.min(p, shown) < 1 && !document.hidden && !root.classList.contains('viewer-open');
     if (busy || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
   }
 
@@ -227,6 +232,7 @@ function start() {
   document.addEventListener('visibilitychange', kick);
   reduceMotion.addEventListener('change', kick);
   document.addEventListener('gallery:layout', kick);
+  document.addEventListener('viewer:closed', kick);
 
   hint.addEventListener('click', (e) => {
     e.preventDefault();
@@ -241,12 +247,18 @@ function start() {
     dragT = performance.now();
     dragV = 0;
     spinV = 0;
+    downX = e.clientX;
+    downY = e.clientY;
+    downT = dragT;
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('is-dragging');
     kick();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
+    if (!dragging) {
+      hover(e);
+      return;
+    }
     const now = performance.now();
     const r = Math.min(canvas.clientWidth, canvas.clientHeight - 64) * 0.45;
     const d = (e.clientX - dragX) / r;
@@ -255,16 +267,36 @@ function start() {
     dragX = e.clientX;
     dragT = now;
   });
-  const endDrag = () => {
+  const endDrag = (e: PointerEvent) => {
     if (!dragging) return;
     dragging = false;
     // A release after a pause throws nothing.
     spinV = still() || performance.now() - dragT > 80 ? 0 : clamp(dragV, -6, 6);
     canvas.classList.remove('is-dragging');
+    // A tap or click that barely moved opens the photo under it in the viewer.
+    if (e.type === 'pointerup' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8 && performance.now() - downT < 500) {
+      spinV = 0;
+      const hit = globe?.pick(e.clientX, e.clientY);
+      if (hit) {
+        canvas.classList.remove('is-over-photo');
+        document.dispatchEvent(new CustomEvent('hero:open', { detail: { index: hit.photo, x: e.clientX, y: e.clientY, size: hit.size } }));
+      }
+    }
     kick();
   };
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
+
+  // With a mouse the cursor turns into a hand over a photo; checked at most
+  // every 80 ms, because each check reads a pixel back from the GPU.
+  function hover(e: PointerEvent) {
+    if (e.pointerType !== 'mouse' || !globe) return;
+    const now = performance.now();
+    if (now - hoverT < 80) return;
+    hoverT = now;
+    canvas.classList.toggle('is-over-photo', globe.pick(e.clientX, e.clientY) !== null);
+  }
+  canvas.addEventListener('pointerleave', () => canvas.classList.remove('is-over-photo'));
 
   // On desktop the globe leans a little towards the cursor.
   window.addEventListener('pointermove', (e) => {
