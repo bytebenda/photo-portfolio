@@ -945,6 +945,74 @@ html:not(.hero-on) .hero-bio {
   visibility: hidden;
   transition: opacity 300ms var(--ease), visibility 0s 300ms;
 }
+/* On the hero the flame button takes the Filter button's place; a click sends
+   a burst of flames up the screen. */
+.filters {
+  position: relative;
+}
+.flame-btn {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  font-size: 20px;
+  transition: opacity 300ms var(--ease), background 150ms ease;
+}
+.flame-btn:active {
+  background: var(--glass-fill-active);
+}
+html:not(.hero-on) .flame-btn,
+.hero-filter .flame-btn {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 300ms var(--ease), visibility 0s 300ms;
+}
+.flames {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+.flames span {
+  position: absolute;
+  bottom: -64px;
+  left: var(--x);
+  font-size: var(--size);
+  line-height: 1;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: flame-up var(--dur) cubic-bezier(0.25, 0.6, 0.35, 1) var(--delay) forwards;
+}
+@keyframes flame-up {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  12% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--sway), calc(-100lvh - 128px)) scale(1.15) rotate(var(--rot));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flames span {
+    bottom: var(--y);
+    animation-name: flame-fade;
+  }
+  @keyframes flame-fade {
+    30%,
+    70% {
+      opacity: 1;
+    }
+  }
+}
 /* With few photos visible the page must still scroll one full hero height,
    or the globe can never hand over to the grid. */
 .hero main {

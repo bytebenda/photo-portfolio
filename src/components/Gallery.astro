@@ -73,6 +73,7 @@ const year = new Date().getFullYear();
 <header class="header" id="header">
   <a class="logo" href="/">{site.name}</a>
   <nav class="filters" aria-label="Filters">
+    <button type="button" class="pill flame-btn" id="flame-btn" aria-label="Flames"><span aria-hidden="true">🔥</span></button>
     <div class="filter">
       <button type="button" class="pill" aria-expanded="false" aria-controls="panel-filter" id="pill-filter">
         <span>Filter</span>
@@ -235,4 +236,5 @@ const year = new Date().getFullYear();
 
 <script>
   import '../scripts/gallery.ts';
+  import '../scripts/flames.ts';
 </script>
