@@ -11,6 +11,7 @@ function start() {
   const canvas = document.getElementById('hero-canvas') as HTMLCanvasElement;
   const hint = document.getElementById('hero-hint')!;
   const pauseBtn = document.getElementById('hero-pause') as HTMLButtonElement;
+  const hit = document.getElementById('hero-hit')!;
   const tiles = Array.from(document.querySelectorAll<HTMLElement>('#grid .tile'));
   const grid = document.getElementById('grid')!;
   const glowEl = hero.querySelector<HTMLElement>('.hero-glow')!;
@@ -42,7 +43,6 @@ function start() {
   let dragging = false;
   let dragX = 0;
   let dragY = 0;
-  let swiping = false;
   let dragH = 0;
   let dragT = 0;
   let dragV = 0;
@@ -162,12 +162,12 @@ function start() {
     setStyle(pauseBtn, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
     setStyle(pauseBtn, 'pointerEvents', at < 0.1 ? 'auto' : 'none');
     setStyle(grid, 'opacity', at < 1 ? Math.min(1, x * 50).toFixed(3) : '');
-    setStyle(canvas, 'pointerEvents', p < 0.1 ? 'auto' : 'none');
+    setStyle(hit, 'pointerEvents', p < 0.1 && intro >= 1 ? 'auto' : 'none');
     return p;
   }
 
   const written = new WeakMap<HTMLElement, Record<string, string>>();
-  function setStyle(el: HTMLElement, prop: 'opacity' | 'pointerEvents', value: string) {
+  function setStyle(el: HTMLElement, prop: 'opacity' | 'pointerEvents' | 'transform' | 'width' | 'height', value: string) {
     const seen = written.get(el) ?? {};
     if (seen[prop] === value) return;
     seen[prop] = value;
@@ -291,6 +291,12 @@ function start() {
     if (moving && !paused) backdropT += dt;
     const backdrop = smooth(clamp(introT / 0.35)) * (1 - smooth(clamp(d / 0.3)));
 
+    // The touch disc follows the ball (sideways roll and drop-in).
+    const hr = r * 1.03;
+    setStyle(hit, 'width', `${Math.round(hr * 2)}px`);
+    setStyle(hit, 'height', `${Math.round(hr * 2)}px`);
+    setStyle(hit, 'transform', `translate(${Math.round(w / 2 + ballX * (1 - upright) - hr)}px, ${Math.round(h / 2 + 32 - pose.y * rest - hr)}px)`);
+
     globe.render({
       p: d,
       backdrop,
@@ -385,7 +391,6 @@ function start() {
     paused = !paused;
     pauseBtn.setAttribute('aria-pressed', String(paused));
     pauseBtn.setAttribute('aria-label', paused ? 'Play the globe' : 'Pause the globe');
-    canvas.classList.toggle('is-paused', paused);
     if (paused) scrollSpin = 0;
     kick();
   });
@@ -395,15 +400,10 @@ function start() {
     window.scrollTo({ top: heroH, behavior: still() ? 'auto' : 'smooth' });
   });
 
-  // Drag or swipe sideways to spin; vertical swipes still scroll (touch-action: pan-y).
-  canvas.addEventListener('pointerdown', (e) => {
+  // A drag or swipe on the ball turns it in any direction (the disc over it has
+  // touch-action: none); beside the ball the page scrolls as usual.
+  hit.addEventListener('pointerdown', (e) => {
     if (progress() >= 0.1) return;
-    // Paused on a touch screen the canvas no longer scrolls by itself; a swipe
-    // that starts beside the ball still scrolls the page.
-    const r0 = radius(canvas.clientWidth, canvas.clientHeight);
-    const cx = canvas.clientWidth / 2 + ballX;
-    const cy = canvas.clientHeight / 2 + 32;
-    swiping = paused && e.pointerType === 'touch' && Math.hypot(e.clientX - cx, e.clientY - cy) > r0 * 1.05;
     dragging = true;
     dragX = e.clientX;
     dragY = e.clientY;
@@ -415,28 +415,21 @@ function start() {
     downX = e.clientX;
     downY = e.clientY;
     downT = dragT;
-    canvas.setPointerCapture(e.pointerId);
-    canvas.classList.add('is-dragging');
+    hit.setPointerCapture(e.pointerId);
+    hit.classList.add('is-dragging');
     kick();
   });
-  canvas.addEventListener('pointermove', (e) => {
+  hit.addEventListener('pointermove', (e) => {
     if (!dragging) {
       hover(e);
-      return;
-    }
-    if (swiping) {
-      window.scrollBy(0, dragY - e.clientY);
-      dragX = e.clientX;
-      dragY = e.clientY;
       return;
     }
     const now = performance.now();
     const r = radius(canvas.clientWidth, canvas.clientHeight);
     // Sideways turns the ball around its vertical axis, up and down around its
-    // horizontal one, so it can be turned to show any photo. On touch screens a
-    // vertical swipe scrolls the page unless the ball is paused.
+    // horizontal one, so it can be turned to show any photo.
     const dx = (e.clientX - dragX) / r;
-    const dy = e.pointerType === 'touch' && !paused ? 0 : (e.clientY - dragY) / r;
+    const dy = (e.clientY - dragY) / r;
     orient = turn(orient, 0, 1, 0, dx);
     if (dy) orient = turn(orient, 1, 0, 0, dy);
     const span = Math.max(0.008, (now - dragT) / 1000);
@@ -450,24 +443,24 @@ function start() {
     if (!dragging) return;
     dragging = false;
     // A release after a pause throws nothing.
-    const thrown = !swiping && !still() && performance.now() - dragT <= 80;
+    const thrown = !still() && performance.now() - dragT <= 80;
     spinV = thrown ? clamp(dragV, -6, 6) : 0;
     spinH = thrown ? clamp(dragH, -6, 6) : 0;
-    canvas.classList.remove('is-dragging');
+    hit.classList.remove('is-dragging');
     // A tap or click that barely moved opens the photo under it in the viewer.
     if (e.type === 'pointerup' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8 && performance.now() - downT < 500) {
       spinV = 0;
       spinH = 0;
-      const hit = globe?.pick(e.clientX, e.clientY);
-      if (hit) {
-        canvas.classList.remove('is-over-photo');
-        document.dispatchEvent(new CustomEvent('hero:open', { detail: { index: hit.photo, x: e.clientX, y: e.clientY, size: hit.size } }));
+      const picked = globe?.pick(e.clientX, e.clientY);
+      if (picked) {
+        hit.classList.remove('is-over-photo');
+        document.dispatchEvent(new CustomEvent('hero:open', { detail: { index: picked.photo, x: e.clientX, y: e.clientY, size: picked.size } }));
       }
     }
     kick();
   };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
+  hit.addEventListener('pointerup', endDrag);
+  hit.addEventListener('pointercancel', endDrag);
 
   // With a mouse the cursor turns into a hand over a photo; checked at most
   // every 80 ms, because each check reads a pixel back from the GPU.
@@ -476,9 +469,9 @@ function start() {
     const now = performance.now();
     if (now - hoverT < 80) return;
     hoverT = now;
-    canvas.classList.toggle('is-over-photo', globe.pick(e.clientX, e.clientY) !== null);
+    hit.classList.toggle('is-over-photo', globe.pick(e.clientX, e.clientY) !== null);
   }
-  canvas.addEventListener('pointerleave', () => canvas.classList.remove('is-over-photo'));
+  hit.addEventListener('pointerleave', () => hit.classList.remove('is-over-photo'));
 
   // On desktop the ball rolls left and right after the cursor.
   window.addEventListener('pointermove', (e) => {
