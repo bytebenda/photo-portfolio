@@ -38,7 +38,7 @@ function start() {
   let ballTarget = 0;
   let spinV = 0; // momentum from a drag around the vertical axis, rad/s
   let spinH = 0; // and around the horizontal axis
-  let paused = false; // the pause button: no rolling, the ball stays where you leave it
+  let paused = false; // the pause button: no rolling, the ball rolls back to the centre
   let dragging = false;
   let dragX = 0;
   let dragY = 0;
@@ -247,9 +247,11 @@ function start() {
     const spinRoom = 1 - smooth(clamp(d / 0.2));
     if (scrollSpin > 1e-3 && spinRoom > 0) orient = turn(orient, 1, 0, 0, scrollSpin * dt * spinRoom);
     const reach = Math.max(0, w / 2 - r - 24);
-    // Paused, the ball stays where it is instead of following the cursor.
-    const goal = paused ? ballX * free : clamp(ballTarget, -1, 1) * reach * free;
-    const nextX = ballX + (goal - ballX) * Math.min(1, dt * 2.5);
+    // Paused, the ball rolls back to the centre and stays there instead of
+    // following the cursor.
+    const goal = paused ? 0 : clamp(ballTarget, -1, 1) * reach * free;
+    let nextX = ballX + (goal - ballX) * Math.min(1, dt * 2.5);
+    if (Math.abs(goal - nextX) < 0.1) nextX = goal;
     if (nextX !== ballX) orient = turn(orient, 0, 0, -1, (nextX - ballX) / r);
     ballX = nextX;
 
@@ -313,7 +315,7 @@ function start() {
 
     // Nothing to draw behind the open viewer.
     const busy = moving && !paused && Math.min(p, shown) < 1 && !document.hidden && !root.classList.contains('viewer-open');
-    const coasting = spinV !== 0 || spinH !== 0 || scrollSpin > 1e-3;
+    const coasting = spinV !== 0 || spinH !== 0 || scrollSpin > 1e-3 || ballX !== goal;
     if (busy || coasting || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
   }
 
