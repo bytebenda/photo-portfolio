@@ -860,16 +860,64 @@ html.hero:not(.hero-ready) .hero-pause {
   }
 }
 /* A short bio in the glass of the photo details: bottom right on larger
-   screens, below the ball on phones, where hero.ts moves the ball up for it. */
+   screens, below the ball on phones, where hero.ts moves the ball up for it.
+   It rises in after the ball lands; until then it only takes its place. */
 .hero-bio {
   position: fixed;
   right: calc(20px + env(safe-area-inset-right));
   bottom: calc(20px + env(safe-area-inset-bottom));
   z-index: 12;
-  width: min(320px, calc(100vw - 40px));
+  width: min(360px, calc(100vw - 40px));
+  padding: 16px 20px;
+  border-radius: 18px;
+  overflow: hidden;
+  color: var(--fg-2);
+  line-height: 1.5;
+  visibility: hidden;
+  --bio-a: 64 77 102;
+  --bio-b: 64 77 102;
+}
+.hero-bio.is-in {
+  visibility: visible;
+  /* Backwards only: once in, hero.ts fades it with the scroll. */
+  animation: bio-in 600ms var(--ease) backwards;
+}
+@keyframes bio-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+/* The colours of the floor glow, along the top edge and fading down the card. */
+.hero-bio::before,
+.hero-bio::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+.hero-bio::before {
+  inset: 0;
+  background: linear-gradient(90deg, rgb(var(--bio-a) / 0.16), rgb(var(--bio-b) / 0.16));
+  -webkit-mask-image: linear-gradient(180deg, #000, transparent 75%);
+  mask-image: linear-gradient(180deg, #000, transparent 75%);
+}
+.hero-bio::after {
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--bio-a) / 0.7) 25%, rgb(var(--bio-b) / 0.7) 75%, transparent);
 }
 .hero-bio p {
+  position: relative; /* above the tint */
   margin: 0;
+}
+.hero-bio .hero-bio-name {
+  margin-bottom: 4px;
+  color: var(--fg);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
 }
 @media (max-width: 640px) {
   .hero-bio {
@@ -877,10 +925,16 @@ html.hero:not(.hero-ready) .hero-pause {
     right: calc(16px + env(safe-area-inset-right));
     bottom: calc(76px + env(safe-area-inset-bottom)); /* above the pause button and the hint */
     width: auto;
+    padding: 14px 18px;
   }
 }
 html:not(.hero-on) .hero-bio {
   visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-bio.is-in {
+    animation: none;
+  }
 }
 /* The Filter button appears with the gallery; until then the canvas covers the grid. */
 .filter {

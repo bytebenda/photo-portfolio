@@ -380,6 +380,18 @@ function start() {
   placeBall();
   new ResizeObserver(placeBall).observe(bio);
 
+  // The bio rises in just after the ball's last bounce, its top edge tinted
+  // with the two colours of the floor glow, taken once so it costs nothing later.
+  function showBio() {
+    const colours = globe?.glowColours();
+    if (colours) {
+      const css = (c: number[]) => c.map((v) => Math.round(Math.min(1, v / 0.55) * 255)).join(' ');
+      bio.style.setProperty('--bio-a', css(colours[0]));
+      bio.style.setProperty('--bio-b', css(colours[1]));
+    }
+    bio.classList.add('is-in');
+  }
+
   // The canvas is sized to the large viewport, so a phone's address bar sliding
   // away does not resize it mid-scroll; only real size changes rebuild it.
   let size = '';
@@ -555,6 +567,7 @@ function start() {
       resize();
       readyAt = performance.now();
       root.classList.add('hero-ready');
+      setTimeout(showBio, still() ? 0 : (FALL + HOP + HOP2 + 0.3) * 1000);
       kick();
     } catch (err) {
       console.error('Globe hero unavailable', err);

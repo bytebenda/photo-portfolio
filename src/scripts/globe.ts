@@ -601,6 +601,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
   atlas.onLate = colourOf;
   const glowA = [0.25, 0.3, 0.4];
   const glowB = [0.25, 0.3, 0.4];
+  const glowGoal = [glowA.slice(), glowB.slice()]; // where the two colours are heading
   let glowT = 0;
 
   // The mix of the photos facing the viewer, left half and right half, made a
@@ -643,6 +644,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
       c = c.map((v) => Math.max(0, l + (v - l) * 1.8));
       const top = Math.max(c[0], c[1], c[2]);
       c = top < 0.02 ? [0.25, 0.3, 0.4] : c.map((v) => (v / top) * 0.55);
+      glowGoal[side] = c;
       for (let j = 0; j < 3; j++) glow[j] += (c[j] - glow[j]) * ease;
     });
     backdropUniforms.uColA.value.set(glowA[0], glowA[1], glowA[2]);
@@ -837,7 +839,10 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
     renderer.dispose();
   }
 
-  return { resize, pickPrimaries, setTargets, render, pick, dispose, renderer };
+  // The two glow colours (left, right) as the floor is heading to, 0 to 0.55.
+  const glowColours = () => glowGoal.map((c) => c.slice());
+
+  return { resize, pickPrimaries, setTargets, render, pick, dispose, renderer, glowColours };
 }
 
 export type Globe = Awaited<ReturnType<typeof createGlobe>>;
