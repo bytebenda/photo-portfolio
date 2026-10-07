@@ -123,7 +123,9 @@ window.addEventListener(
       else if (travel < -10) setHeaderHidden(false);
     }
 
-    if (!motion()) return;
+    // While the globe is still handing over, the grid squares are its landing
+    // spots, so they must not move.
+    if (!motion() || root.classList.contains('hero-on')) return;
     gapTarget = Math.min(MAX_GAP, REST_GAP + (Math.abs(dy) / dt) * 2.5);
     window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(() => {

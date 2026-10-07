@@ -11,6 +11,8 @@ function start() {
   const canvas = document.getElementById('hero-canvas') as HTMLCanvasElement;
   const hint = document.getElementById('hero-hint')!;
   const tiles = Array.from(document.querySelectorAll<HTMLElement>('#grid .tile'));
+  const grid = document.getElementById('grid')!;
+  const glowEl = hero.querySelector<HTMLElement>('.hero-glow')!;
   const data = JSON.parse(document.getElementById('gallery-data')!.textContent || '{}') as { photos: { thumbs: string[] }[] };
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const still = () => reduceMotion.matches;
@@ -49,6 +51,7 @@ function start() {
   let shownV = 0;
   let slow = 0; // count of slow frames while the glow is on
   let glow = true; // switched off for good when the device cannot keep up
+  let glowLevel = 1;
 
   const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
   const progress = () => (heroH > 0 ? clamp(window.scrollY / heroH) : 1);
@@ -144,10 +147,24 @@ function start() {
     // The Filter button comes in when the gallery is nearly there, not only once
     // the scroll is fully past the hero.
     root.classList.toggle('hero-filter', at >= 0.9);
-    root.style.setProperty('--hero-p', at.toFixed(4));
-    root.style.setProperty('--hero-x', smooth(clamp((shown - 0.9) / 0.06)).toFixed(4));
-    canvas.style.pointerEvents = p < 0.1 ? 'auto' : 'none';
+    // Opacities go straight onto the four elements that use them, and only when
+    // they change: a variable on the root would restyle the whole page each frame.
+    const x = smooth(clamp((shown - 0.9) / 0.06));
+    setStyle(canvas, 'opacity', (1 - x).toFixed(3));
+    setStyle(glowEl, 'opacity', Math.max(0, 1 - at * 1.6).toFixed(3));
+    setStyle(hint, 'opacity', Math.max(0, 1 - at * 8).toFixed(3));
+    setStyle(grid, 'opacity', at < 1 ? Math.min(1, x * 50).toFixed(3) : '');
+    setStyle(canvas, 'pointerEvents', p < 0.1 ? 'auto' : 'none');
     return p;
+  }
+
+  const written = new WeakMap<HTMLElement, Record<string, string>>();
+  function setStyle(el: HTMLElement, prop: 'opacity' | 'pointerEvents', value: string) {
+    const seen = written.get(el) ?? {};
+    if (seen[prop] === value) return;
+    seen[prop] = value;
+    written.set(el, seen);
+    el.style[prop] = value;
   }
 
   // Critically damped spring with a speed limit, in small steps so it stays
@@ -235,15 +252,20 @@ function start() {
     const isUpright = upright >= 1;
     if (isUpright && introT >= INTRO) orient = standing;
 
-    if (d < 0.2) globe.pickPrimaries(isUpright ? along : 0);
+    // Which copy of each photo flies is settled before the targets are set.
+    if (d < 0.15) globe.pickPrimaries(isUpright ? along : 0);
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
 
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
     const flight = clamp((d - 0.35) / 0.55);
+    // It tapers to nothing by 0.86 instead of being cut off, and when the device
+    // is too slow for it, it fades out over half a second rather than vanishing.
+    glowLevel += ((glow ? 1 : 0) - glowLevel) * Math.min(1, dt * 4);
     let bloom = (0.12 * (1 - smooth(clamp(d / 0.6))) + 0.3 * Math.sin(Math.PI * flight)) * (moving ? 1 : 0.5);
-    if (d >= 0.88 || !glow) bloom = 0;
+    bloom *= (1 - smooth(clamp((d - 0.78) / 0.08))) * glowLevel;
+    if (bloom < 0.002) bloom = 0;
     // The glow is the only costly part; drop it if frames take longer than ~30 ms.
-    if (bloom > 0 && intro >= 1) {
+    if (bloom > 0 && intro >= 1 && glow) {
       slow = dt > 0.034 ? slow + 1 : Math.max(0, slow - 1);
       if (slow > 12) glow = false;
     }
@@ -283,20 +305,43 @@ function start() {
   // A grid square in viewport pixels, and when its photo leaves: by distance
   // from the screen centre at the end of the hero (the grid is then just under
   // the header), so the flight ripples outward.
-  function rectOf(t: HTMLElement): Target {
-    if (t.hidden) return null;
-    const r = t.getBoundingClientRect();
-    if (!r.width) return null;
+  // Grid squares in page coordinates, measured once per layout instead of every
+  // frame (reading them each frame forces the browser to lay the page out).
+  let boxes: ({ x: number; y: number; size: number } | null)[] | null = null;
+  const remeasure = () => (boxes = null);
+  new ResizeObserver(remeasure).observe(grid);
+  function measure() {
+    const sy = window.scrollY;
+    boxes = tiles.map((t) => {
+      if (t.hidden) return null;
+      const r = t.getBoundingClientRect();
+      return r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 + sy, size: r.width } : null;
+    });
+    return boxes;
+  }
+  function rectOf(_t: HTMLElement, i: number): Target {
+    const b = (boxes ?? measure())[i];
+    if (!b) return null;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const endY = r.top + r.height / 2 - (heroH - window.scrollY);
-    const dist = Math.hypot(r.left + r.width / 2 - w / 2, endY - (h + 64) / 2) / Math.hypot(w / 2, h / 2);
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, size: r.width, order: clamp(dist) };
+    const y = b.y - window.scrollY;
+    const endY = b.y - heroH;
+    const dist = Math.hypot(b.x - w / 2, endY - (h + 64) / 2) / Math.hypot(w / 2, h / 2);
+    return { x: b.x, y, size: b.size, order: clamp(dist) };
   }
 
+  // The canvas is sized to the large viewport, so a phone's address bar sliding
+  // away does not resize it mid-scroll; only real size changes rebuild it.
+  let size = '';
   function resize() {
     heroH = hero.offsetHeight;
-    globe?.resize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight);
+    remeasure();
+    const w = canvas.clientWidth || window.innerWidth;
+    const h = canvas.clientHeight || window.innerHeight;
+    if (globe && size !== `${w}x${h}`) {
+      size = `${w}x${h}`;
+      globe.resize(w, h);
+    }
     sync();
     kick();
   }
@@ -308,7 +353,10 @@ function start() {
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', kick);
   reduceMotion.addEventListener('change', kick);
-  document.addEventListener('gallery:layout', kick);
+  document.addEventListener('gallery:layout', () => {
+    remeasure();
+    kick();
+  });
   document.addEventListener('viewer:closed', kick);
 
   hint.addEventListener('click', (e) => {

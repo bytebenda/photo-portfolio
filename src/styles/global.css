@@ -669,14 +669,15 @@ html:not(.js) .glass-btn {
 .hero-canvas,
 .hero-glow {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: 100%;
+  /* The large viewport: a phone's address bar sliding away does not resize it. */
+  height: 100lvh;
   pointer-events: none;
 }
 .hero-canvas {
   z-index: 10;
-  opacity: calc(1 - var(--hero-x, 0));
   display: block;
   touch-action: pan-y;
   cursor: grab;
@@ -690,7 +691,6 @@ html:not(.js) .glass-btn {
 .hero-glow {
   z-index: 9;
   background: radial-gradient(circle at 50% calc(50% + 32px), rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 38%, transparent 62%);
-  opacity: calc(1 - var(--hero-p, 0) * 1.6);
 }
 .hero-hint {
   position: fixed;
@@ -709,7 +709,6 @@ html:not(.js) .glass-btn {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   text-decoration: none;
-  opacity: calc(1 - var(--hero-p, 0) * 8);
 }
 .hero-hint svg {
   animation: hint-bob 1.8s var(--ease) infinite;
@@ -735,9 +734,9 @@ html:not(.hero-on) .hero-hint {
 .hero-loader {
   position: fixed;
   left: 50%;
-  top: calc(50% + 32px);
+  top: calc(50lvh + 32px);
   z-index: 11;
-  width: min(90vw, calc((100svh - 64px) * 0.8));
+  width: min(90vw, calc((100lvh - 64px) * 0.8));
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
   pointer-events: none;
@@ -793,8 +792,7 @@ html.hero:not(.hero-ready) .hero-loader {
   font-variant-numeric: tabular-nums;
 }
 html.hero:not(.hero-ready) .hero-hint {
-  opacity: 0;
-  animation: none;
+  visibility: hidden; /* not opacity: hero.ts sets that inline */
 }
 @media (prefers-reduced-motion: reduce) {
   .hero-loader-arc {
@@ -816,9 +814,9 @@ html.hero:not(.hero-ready) .hero-hint {
   min-height: calc(100lvh - 64px);
 }
 .hero-on .grid {
-  /* Fully there as soon as the hand-off starts, so nothing looks dimmed while the
-     canvas, whose tiles sit exactly on the grid's, fades out on top. */
-  opacity: min(1, calc(var(--hero-x, 0) * 50));
+  /* Hidden under the globe until the hand-off; hero.ts sets the opacity from
+     there, fully there as soon as the canvas starts to fade out on top. */
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

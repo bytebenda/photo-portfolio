@@ -384,6 +384,7 @@ function loadAtlas(images: HTMLImageElement[], cell: number) {
   texture.anisotropy = 4;
   const atlas = { texture, cols, rows, size, onLate: (_i: number) => {} };
   let ready = false;
+  let uploadTimer = 0;
   const draws = images.map(async (img, i) => {
     try {
       await img.decode();
@@ -411,8 +412,15 @@ function loadAtlas(images: HTMLImageElement[], cell: number) {
       ctx.drawImage(img, dx, dy, size, size); // whole image: square thumbnails
     }
     if (ready) {
-      texture.needsUpdate = true;
       atlas.onLate(i);
+      // Late photos are uploaded together, at most every 250 ms: each upload
+      // rebuilds the whole texture, which would hitch a running animation.
+      if (!uploadTimer) {
+        uploadTimer = window.setTimeout(() => {
+          uploadTimer = 0;
+          texture.needsUpdate = true;
+        }, 250);
+      }
     }
   });
   return Promise.race([Promise.all(draws), new Promise((r) => setTimeout(r, WAIT_MS))]).then(() => {
@@ -765,7 +773,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
     mesh.quaternion.set(...f.quat);
     ball.position.set(f.ballX, f.offsetY + (f.upright ? 0 : f.centerY), 0);
     ball.scale.set(f.scaleX, f.scaleY, 1);
-    if (bloom && f.bloom > 0.004) {
+    if (bloom && f.bloom > 0) {
       bloom.pass.strength = f.bloom;
       bloom.composer.render();
     } else {
