@@ -84,41 +84,46 @@ const year = new Date().getFullYear();
           <button type="button" class="text-btn" id="deselect-all">Deselect all</button>
           <button type="button" class="text-btn" id="show-all">Show all</button>
         </div>
-        {
-          groups.map((g) => (
-            <section class="filter-section" data-group={g.key} aria-label={g.label}>
-              <div class="section-head">
-                <h2 class="section-title">{g.label}</h2>
-                <button type="button" class="text-btn" data-action="all">Select all</button>
-                <button type="button" class="text-btn" data-action="clear">Clear</button>
-              </div>
-              {g.options.map((o) =>
-                o.places ? (
-                  <Fragment>
-                    <label class="option is-country">
-                      <input type="checkbox" data-country={o.id} data-leaves={o.places.map((pl) => pl.id).join(',')} checked />
+        <div class="panel-scroll">
+          {
+            groups.map((g) => (
+              <section class="filter-section" data-group={g.key} aria-label={g.label}>
+                <div class="section-head">
+                  <h2 class="section-title">{g.label}</h2>
+                  <button type="button" class="text-btn" data-action="all">Select all</button>
+                  <button type="button" class="text-btn" data-action="clear">Clear</button>
+                </div>
+                {g.options.map((o) =>
+                  o.places ? (
+                    <Fragment>
+                      <label class="option is-country">
+                        <input type="checkbox" data-country={o.id} data-leaves={o.places.map((pl) => pl.id).join(',')} checked />
+                        <span class="option-label">{o.label}</span>
+                        <span class="option-count" />
+                      </label>
+                      {o.places.map((pl) => (
+                        <label class="option is-place">
+                          <input type="checkbox" value={pl.id} checked />
+                          <span class="option-label">{pl.label}</span>
+                          <span class="option-count" />
+                        </label>
+                      ))}
+                    </Fragment>
+                  ) : (
+                    <label class="option">
+                      <input type="checkbox" value={o.id} checked />
                       <span class="option-label">{o.label}</span>
                       <span class="option-count" />
                     </label>
-                    {o.places.map((pl) => (
-                      <label class="option is-place">
-                        <input type="checkbox" value={pl.id} checked />
-                        <span class="option-label">{pl.label}</span>
-                        <span class="option-count" />
-                      </label>
-                    ))}
-                  </Fragment>
-                ) : (
-                  <label class="option">
-                    <input type="checkbox" value={o.id} checked />
-                    <span class="option-label">{o.label}</span>
-                    <span class="option-count" />
-                  </label>
-                ),
-              )}
-            </section>
-          ))
-        }
+                  ),
+                )}
+              </section>
+            ))
+          }
+        </div>
+        <div class="panel-bottom">
+          <button type="button" class="text-btn panel-close" id="filter-close">Close</button>
+        </div>
       </div>
     </div>
   </nav>
@@ -141,7 +146,7 @@ const year = new Date().getFullYear();
               alt={p.title}
               width="800"
               height="800"
-              loading={i < 15 ? 'eager' : 'lazy'}
+              loading={i < 4 ? 'eager' : 'lazy'}
               decoding="async"
             />
           </picture>

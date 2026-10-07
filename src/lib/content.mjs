@@ -382,9 +382,14 @@ function sizesFor(longEdge, wanted) {
   return fit;
 }
 
+// Bumped whenever the watermark on the large images and the link preview
+// changes, so those files get new names and are made again.
+const WATERMARK = 'w1';
+
 /** The image files a photo needs, with their public URLs. */
 export function imageSet(p) {
   const base = `${p.slug}-${p.hash}`;
+  const marked = `${base}-${WATERMARK}`;
   const longEdge = Math.max(p.width, p.height);
   const short = Math.min(p.width, p.height);
   const thumbSizes = sizesFor(short, SIZES.thumb);
@@ -398,11 +403,11 @@ export function imageSet(p) {
       webp: thumbSizes.map((w) => ({ w, ...f(`${base}-t${w}.webp`) })),
     },
     large: {
-      avif: largeSizes.map((w) => ({ w, ...f(`${base}-l${w}.avif`) })),
-      webp: largeSizes.map((w) => ({ w, ...f(`${base}-l${w}.webp`) })),
+      avif: largeSizes.map((w) => ({ w, ...f(`${marked}-l${w}.avif`) })),
+      webp: largeSizes.map((w) => ({ w, ...f(`${marked}-l${w}.webp`) })),
     },
     preview: { w: preview, ...f(`${base}-p${preview}.webp`) },
-    og: { w: og, ...f(`${base}-og${og}.jpg`) },
+    og: { w: og, ...f(`${marked}-og${og}.jpg`) },
   };
 }
 
