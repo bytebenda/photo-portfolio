@@ -37,7 +37,6 @@ function start() {
   let tiltTarget = { x: 0, y: 0 };
   let intro = 0;
   let readyAt = 0;
-  let lastRot = 0; // for the spin speed that drives the sparkles
   let shown = 0; // progress drawn, following the scroll progress through a spring
   let shownV = 0;
   let slow = 0; // count of slow frames while the glow is on
@@ -167,11 +166,6 @@ function start() {
     const lean = 1 - smooth(clamp(d / 0.5));
 
     const shownRot = rot + pose.spin;
-    const spinRate = dt > 0 ? (shownRot - lastRot) / dt : 0;
-    lastRot = shownRot;
-    // Glitter when the globe turns faster than its slow spin: a swipe, the
-    // momentum after it, or the three turns of the drop-in.
-    const sparkle = moving && d < 0.1 ? Math.min(340, Math.max(0, Math.abs(spinRate) - SPIN * 3) * 70) * (1 - d * 10) : 0;
 
     if (d < 0.2) globe.pickPrimaries(shownRot);
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
@@ -198,13 +192,10 @@ function start() {
       offsetY: pose.y * rest,
       scaleX: 1 + (pose.sx - 1) * rest,
       scaleY: 1 + (pose.sy - 1) * rest,
-      dt,
-      spinRate,
-      sparkle,
     });
 
     const busy = moving && Math.min(p, shown) < 1 && !document.hidden;
-    if (busy || springing || dragging || intro < 1 || globe.sparksAlive() > 0) raf = requestAnimationFrame(tick);
+    if (busy || springing || dragging || intro < 1) raf = requestAnimationFrame(tick);
   }
 
   // A grid square in viewport pixels, and when its photo leaves: by distance
