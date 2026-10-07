@@ -773,6 +773,9 @@ document.addEventListener('keydown', (e) => {
     const pill = openPanel.querySelector<HTMLElement>('.pill')!;
     setPanel(null);
     pill.focus();
+  } else if (e.key === 'Escape') {
+    // Nothing open: hero.ts takes the page back up to the ball.
+    document.dispatchEvent(new CustomEvent('gallery:escape'));
   }
 });
 

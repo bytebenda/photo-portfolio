@@ -52,6 +52,15 @@ function start() {
   let downX = 0;
   let downY = 0;
   let downT = 0;
+  // Fingers on the ball. With two, moving them together turns the ball like one
+  // finger, twisting turns it on the spot and pinching zooms it.
+  const touches = new Map<number, { x: number; y: number }>();
+  let twoFingers = false; // this gesture used two fingers: no throw, no tap
+  let pinchDist = 0;
+  let pinchAngle = 0;
+  let zoom = 1;
+  const ZOOM_MIN = 0.75;
+  const ZOOM_MAX = 2.5;
   let hoverT = 0;
   let backdropT = 0;
   let intro = 0;
@@ -228,6 +237,10 @@ function start() {
     // own scrolling and dragging.
     const free = 1 - smooth(clamp(d / 0.06));
     const r = radius(w, h);
+    // A pinched ball eases back to its own size before it unrolls, and is back
+    // to normal once the scroll is past that.
+    if (free === 0) zoom = 1;
+    const z = 1 + (zoom - 1) * free;
     if (!dragging) {
       spinV *= Math.exp(-dt * 2.2);
       spinH *= Math.exp(-dt * 2.2);
@@ -297,7 +310,7 @@ function start() {
     const backdrop = smooth(clamp(introT / 0.35)) * (1 - smooth(clamp(d / 0.3)));
 
     // The touch disc follows the ball (sideways roll and drop-in).
-    const hr = r * 1.03;
+    const hr = r * 1.03 * z;
     setStyle(hit, 'width', `${Math.round(hr * 2)}px`);
     setStyle(hit, 'height', `${Math.round(hr * 2)}px`);
     setStyle(hit, 'transform', `translate(${Math.round(w / 2 + ballX * (1 - upright) - hr)}px, ${Math.round(h / 2 + ballY - pose.y * rest - hr)}px)`);
@@ -308,7 +321,7 @@ function start() {
       time: backdropT,
       floorDrop: smooth(clamp(d / 0.3)) * h * 0.3,
       shadowY: pose.y * rest,
-      shadowScale: 1 + (pose.sx - 1) * rest,
+      shadowScale: (1 + (pose.sx - 1) * rest) * z,
       vel: Math.abs(shownV),
       rot: isUpright ? along : 0,
       quat: isUpright ? [0, 0, 0, 1] : slerp(shownQ, standing, upright),
@@ -320,8 +333,9 @@ function start() {
       centerY: -ballY,
       bloom,
       offsetY: pose.y * rest,
-      scaleX: 1 + (pose.sx - 1) * rest,
-      scaleY: 1 + (pose.sy - 1) * rest,
+      scaleX: (1 + (pose.sx - 1) * rest) * z,
+      scaleY: (1 + (pose.sy - 1) * rest) * z,
+      scaleZ: z,
     });
 
     // Nothing to draw behind the open viewer.
@@ -439,56 +453,113 @@ function start() {
     e.preventDefault();
     window.scrollTo({ top: heroH, behavior: still() ? 'auto' : 'smooth' });
   });
+  // Escape in the gallery goes back up to the ball.
+  document.addEventListener('gallery:escape', () => {
+    if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' });
+  });
 
   // A drag or swipe on the ball turns it in any direction (the disc over it has
   // touch-action: none); beside the ball the page scrolls as usual.
   hit.addEventListener('pointerdown', (e) => {
     if (progress() >= 0.1) return;
-    dragging = true;
-    dragX = e.clientX;
-    dragY = e.clientY;
-    dragT = performance.now();
-    dragV = 0;
-    dragH = 0;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    hit.setPointerCapture(e.pointerId);
     spinV = 0;
     spinH = 0;
-    downX = e.clientX;
-    downY = e.clientY;
-    downT = dragT;
-    hit.setPointerCapture(e.pointerId);
-    hit.classList.add('is-dragging');
+    dragV = 0;
+    dragH = 0;
+    dragT = performance.now();
+    if (touches.size === 1) {
+      dragging = true;
+      twoFingers = false;
+      dragX = e.clientX;
+      dragY = e.clientY;
+      downX = e.clientX;
+      downY = e.clientY;
+      downT = dragT;
+      hit.classList.add('is-dragging');
+    } else {
+      twoFingers = true;
+      startPair();
+    }
     kick();
   });
+
+  // The first two fingers: the point between them, their distance and angle.
+  function pair() {
+    const [a, b] = [...touches.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, dist: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) };
+  }
+  function startPair() {
+    const p = pair();
+    dragX = p.x;
+    dragY = p.y;
+    pinchDist = p.dist;
+    pinchAngle = p.angle;
+  }
+
   hit.addEventListener('pointermove', (e) => {
     if (!dragging) {
       hover(e);
       return;
     }
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const now = performance.now();
-    const r = radius(canvas.clientWidth, canvas.clientHeight);
+    const r = radius(canvas.clientWidth, canvas.clientHeight) * zoom;
+    let x = e.clientX;
+    let y = e.clientY;
+    if (touches.size >= 2) {
+      const p = pair();
+      x = p.x;
+      y = p.y;
+      // A twist turns the ball on the spot, clockwise with the fingers.
+      let da = p.angle - pinchAngle;
+      if (da > Math.PI) da -= 2 * Math.PI;
+      if (da < -Math.PI) da += 2 * Math.PI;
+      if (da) orient = turn(orient, 0, 0, -1, da);
+      if (pinchDist > 0 && p.dist > 0) zoom = clamp(zoom * (p.dist / pinchDist), ZOOM_MIN, ZOOM_MAX);
+      pinchDist = p.dist;
+      pinchAngle = p.angle;
+    }
     // Sideways turns the ball around its vertical axis, up and down around its
     // horizontal one, so it can be turned to show any photo.
-    const dx = (e.clientX - dragX) / r;
-    const dy = (e.clientY - dragY) / r;
+    const dx = (x - dragX) / r;
+    const dy = (y - dragY) / r;
     orient = turn(orient, 0, 1, 0, dx);
     if (dy) orient = turn(orient, 1, 0, 0, dy);
     const span = Math.max(0.008, (now - dragT) / 1000);
     dragV = dx / span;
     dragH = dy / span;
-    dragX = e.clientX;
-    dragY = e.clientY;
+    dragX = x;
+    dragY = y;
     dragT = now;
+    kick();
   });
   const endDrag = (e: PointerEvent) => {
-    if (!dragging) return;
+    if (!touches.delete(e.pointerId) || !dragging) return;
+    if (touches.size === 1) {
+      // From two fingers to one: carry on turning with the one left, no jump.
+      const [rest] = [...touches.values()];
+      dragX = rest.x;
+      dragY = rest.y;
+      dragT = performance.now();
+      dragV = 0;
+      dragH = 0;
+      return;
+    }
+    if (touches.size > 1) {
+      startPair();
+      return;
+    }
     dragging = false;
-    // A release after a pause throws nothing.
-    const thrown = !still() && performance.now() - dragT <= 80;
+    // A release after a pause throws nothing, nor does lifting two fingers.
+    const thrown = !still() && !twoFingers && performance.now() - dragT <= 80;
     spinV = thrown ? clamp(dragV, -6, 6) : 0;
     spinH = thrown ? clamp(dragH, -6, 6) : 0;
     hit.classList.remove('is-dragging');
     // A tap or click that barely moved opens the photo under it in the viewer.
-    if (e.type === 'pointerup' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8 && performance.now() - downT < 500) {
+    if (e.type === 'pointerup' && !twoFingers && Math.hypot(e.clientX - downX, e.clientY - downY) < 8 && performance.now() - downT < 500) {
       spinV = 0;
       spinH = 0;
       const picked = globe?.pick(e.clientX, e.clientY);

@@ -42,6 +42,7 @@ export type Frame = {
   offsetY: number;
   scaleX: number;
   scaleY: number;
+  scaleZ: number; // depth: 1, or the pinch zoom
   backdrop: number; // strength of the floor and glow behind the globe, 0 to 1
   time: number; // seconds, moves the floor and glow
   floorDrop: number; // pixels the floor has sunk while scrolling
@@ -786,7 +787,7 @@ export async function createGlobe(canvas: HTMLCanvasElement, images: HTMLImageEl
     uniforms.uCenterY.value = f.upright ? f.centerY : 0;
     mesh.quaternion.set(...f.quat);
     ball.position.set(f.ballX, f.offsetY + (f.upright ? 0 : f.centerY), 0);
-    ball.scale.set(f.scaleX, f.scaleY, 1);
+    ball.scale.set(f.scaleX, f.scaleY, f.scaleZ);
     if (bloom && f.bloom > 0) {
       bloom.pass.strength = f.bloom;
       bloom.composer.render();
