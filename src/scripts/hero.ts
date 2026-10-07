@@ -19,7 +19,7 @@ function start() {
 
   if (!data.photos?.length) return stop();
 
-  const ROLL = (2 * Math.PI) / 12; // rolls forward one turn per 12 seconds
+  const ROLL = (2 * Math.PI) / 12; // rolls towards the viewer, one turn per 12 seconds
   const SPRING = 10; // rad/s; the shown progress trails the scroll by a few hundred ms
   const MAX_SPEED = 1.6; // progress per second: a full swipe still takes at least 0.6 s
 
@@ -190,7 +190,7 @@ function start() {
     // Scrolling during the drop-in takes the globe straight to rest.
     const rest = 1 - smooth(clamp(d / 0.08));
 
-    // The ball rolls forward on the floor and, on desktop, rolls sideways
+    // The ball rolls towards the viewer on the floor and, on desktop, rolls sideways
     // towards the cursor; a drag turns it and throws it. All of it stops while
     // the globe unrolls. Reduce Motion keeps only what follows the visitor's
     // own scrolling and dragging.
@@ -202,8 +202,10 @@ function start() {
     }
     if (moving && intro >= 1) {
       const a = ROLL * free * dt;
-      orient = turn(orient, -1, 0, 0, a);
-      rolled += a * r;
+      // Towards the viewer: the top comes forward and the floor runs away
+      // under the ball, the same way the page moves when scrolling down.
+      orient = turn(orient, 1, 0, 0, a);
+      rolled -= a * r;
     }
     const reach = Math.max(0, w / 2 - r - 24);
     const nextX = ballX + (clamp(ballTarget, -1, 1) * reach * free - ballX) * Math.min(1, dt * 2.5);
@@ -213,7 +215,7 @@ function start() {
     // The drop-in flips the ball forward three times. To unroll, the ball comes
     // back over the first bit of the scroll to rolling straight forward only:
     // a turn around x, along its rows, which the shader takes over.
-    const shownQ = turn(orient, -1, 0, 0, pose.spin);
+    const shownQ = turn(orient, 1, 0, 0, pose.spin);
     const upright = smooth(clamp(d / 0.06));
     // Then it turns a quarter turn on screen, rows across, for the wide sheet.
     const tq = clamp((d - 0.06) / 0.16);

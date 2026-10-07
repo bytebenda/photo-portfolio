@@ -390,11 +390,26 @@ function loadAtlas(images: HTMLImageElement[], cell: number) {
     } catch {
       return; // a missing thumbnail stays a dark square
     }
+    // The grid's images come from a srcset, so naturalWidth is scaled by the
+    // pixel density and does not match the file; work from the real pixels.
     // Thumbnails are square already; cover-crop anyway in case one is not.
-    const s = Math.min(img.naturalWidth, img.naturalHeight);
-    const sx = (img.naturalWidth - s) / 2;
-    const sy = (img.naturalHeight - s) / 2;
-    ctx.drawImage(img, sx, sy, s, s, (i % cols) * size, Math.floor(i / cols) * size, size, size);
+    let bitmap: ImageBitmap | null = null;
+    try {
+      bitmap = await createImageBitmap(img);
+    } catch {
+      // drawn from the element below
+    }
+    const w = bitmap ? bitmap.width : img.naturalWidth;
+    const h = bitmap ? bitmap.height : img.naturalHeight;
+    const s = Math.min(w, h);
+    const dx = (i % cols) * size;
+    const dy = Math.floor(i / cols) * size;
+    if (bitmap) {
+      ctx.drawImage(bitmap, (w - s) / 2, (h - s) / 2, s, s, dx, dy, size, size);
+      bitmap.close();
+    } else {
+      ctx.drawImage(img, dx, dy, size, size); // whole image: square thumbnails
+    }
     if (ready) {
       texture.needsUpdate = true;
       atlas.onLate(i);
