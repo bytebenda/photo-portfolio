@@ -6,7 +6,7 @@ The photos come from Google Drive and never go into Git. They live in three plac
 
 ## Adding a photo
 
-1. Put it in the Google Drive folder. The next run of the workflow (every morning, or "Run workflow" in the Actions tab) imports it, makes its images and deploys the site.
+1. Put it in the Google Drive folder. The workflow checks the folder every 30 minutes; when something is new, changed or removed it imports it, makes its images and deploys the site, so a new photo is live within about 30 to 40 minutes. For sooner, use "Run workflow" in the Actions tab.
 2. Optional: add an entry to `content/photos.yaml` at the position it should take in the grid, and push.
 
 ```yaml
@@ -139,7 +139,7 @@ The home page opens on a full-screen globe made of the gallery's square thumbnai
 4. Save the cache when something changed, and commit `content/drive.yaml` and `content/images.json` when they changed.
 5. `vercel build` and `vercel deploy --prebuilt`: production for main, a preview for other branches.
 
-It runs on every push, every morning and from the Actions tab. It needs the repository secret `VERCEL_TOKEN` (Vercel, Account Settings, Tokens). The Vercel team and project IDs are in the workflow. When the cache has expired (GitHub drops caches unused for 7 days), the next run downloads all photos again and makes all images, which takes some minutes.
+It runs on every push, every 30 minutes and from the Actions tab. The 30-minute run stops after checking Google Drive when nothing changed there, so it only rebuilds and deploys for real changes. GitHub may start scheduled runs some minutes late, and it pauses schedules in a repository without any commits for 60 days (the photo list commits count). It needs the repository secret `VERCEL_TOKEN` (Vercel, Account Settings, Tokens). The Vercel team and project IDs are in the workflow. When the cache has expired (GitHub drops caches unused for 7 days), the next run downloads all photos again and makes all images, which takes some minutes.
 
 Set `SITE_URL` (for example `https://example.com`) in the Vercel project's environment variables once the domain is known, so link previews use the right address.
 

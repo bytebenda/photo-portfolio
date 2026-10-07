@@ -4,7 +4,10 @@
 # and processes new photos.
 #
 # Runs on every push (main deploys to production, other branches to a preview),
-# every morning, and from the Actions tab ("Run workflow", production).
+# every 30 minutes, and from the Actions tab ("Run workflow", production). The
+# 30-minute run only checks Google Drive: when nothing changed there it stops
+# after the check, so the site is rebuilt and deployed only for new, changed or
+# removed photos.
 #
 # Repository secrets (Settings, Secrets and variables, Actions):
 #   VERCEL_TOKEN            required: a token from Vercel, Account Settings, Tokens
@@ -22,7 +25,7 @@ on:
         default: false
   push:
   schedule:
-    - cron: '17 6 * * *'
+    - cron: '*/30 * * * *'
 
 permissions:
   contents: write
@@ -64,11 +67,21 @@ jobs:
       - name: Import from Google Drive
         run: npm run import -- ${{ inputs.refresh && '--refresh' || '' }}
 
+      # A scheduled run with nothing new in Drive ends here.
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = schedule ] && git diff --quiet -- content/drive.yaml; then
+            echo "No changes in Google Drive, nothing to deploy"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Make images
+        if: steps.changes.outputs.skip != 'true'
         run: npm run images
 
       - name: Save photos
-        if: steps.photos.outputs.cache-matched-key != format('photos-{0}', hashFiles('content/drive.yaml', 'content/images.json'))
+        if: steps.changes.outputs.skip != 'true' && steps.photos.outputs.cache-matched-key != format('photos-{0}', hashFiles('content/drive.yaml', 'content/images.json'))
         uses: actions/cache/save@v4
         with:
           path: |
@@ -78,6 +91,7 @@ jobs:
 
       # drive.yaml and images.json hold names, keywords and sizes, no pixels.
       - name: Commit photo list
+        if: steps.changes.outputs.skip != 'true'
         run: |
           git add content/drive.yaml content/images.json
           if git diff --cached --quiet; then
@@ -91,6 +105,7 @@ jobs:
           git push
 
       - name: Deploy to Vercel
+        if: steps.changes.outputs.skip != 'true'
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "::error::Add the VERCEL_TOKEN repository secret (a token from Vercel, Account Settings, Tokens)"
