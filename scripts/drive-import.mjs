@@ -20,13 +20,15 @@
 //
 // Unchanged files are skipped, files that were removed from Drive are removed
 // from content/photos/. With an API key or service account a file changed in
-// Drive is downloaded again (Drive's MD5 checksum); without one only with
-// --refresh, because the public pages give no checksum. --refresh downloads every
-// photo again and keeps the ones whose content changed, for example after adding
-// keywords. Photos you added to content/photos/ yourself are never touched.
+// Drive is downloaded again (Drive's MD5 checksum). Without one the public
+// pages give no checksum, so every run reads the first 256 KB of each photo,
+// where the keywords and title are stored, and downloads the photo again when
+// those bytes differ from the copy on disk: new keywords reach the site at the
+// next run. --refresh downloads every photo again and keeps the ones whose
+// content changed. Photos you added to content/photos/ yourself are never touched.
 //
 //   node scripts/drive-import.mjs [--dry-run] [--refresh]
-import { readFile, writeFile, rename, unlink, access, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, unlink, access, mkdir, open } from 'node:fs/promises';
 import { createHash, createSign } from 'node:crypto';
 import path from 'node:path';
 import YAML from 'yaml';
@@ -159,6 +161,51 @@ async function downloadPublic(id, name) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+// The keywords, title and capture date sit in the metadata at the start of a
+// photo, so a hash of its first bytes changes when they do.
+const HEAD_BYTES = 256 * 1024;
+const headHash = (buf) => createHash('sha1').update(buf.subarray(0, HEAD_BYTES)).digest('hex');
+
+async function headLocal(file) {
+  const fh = await open(file, 'r').catch(() => null);
+  if (!fh) return null;
+  try {
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const { bytesRead } = await fh.read(buf, 0, HEAD_BYTES, 0);
+    return headHash(buf.subarray(0, bytesRead));
+  } finally {
+    await fh.close();
+  }
+}
+
+// Reads only the start of a shared photo and stops the download there. Returns
+// null when Drive does not hand out the photo right now (rate limit, a web page).
+async function headPublic(id) {
+  try {
+    const res = await fetch(`https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`, {
+      headers: { ...BROWSER, Range: `bytes=0-${HEAD_BYTES - 1}` },
+      redirect: 'follow',
+    });
+    if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) {
+      await res.body?.cancel();
+      return null;
+    }
+    const chunks = [];
+    let size = 0;
+    const reader = res.body.getReader();
+    while (size < HEAD_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      size += value.length;
+    }
+    await reader.cancel();
+    return headHash(Buffer.concat(chunks));
+  } catch {
+    return null;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Walk the folder tree                                                */
 /* ------------------------------------------------------------------ */
@@ -278,18 +325,38 @@ async function onDiskAs(file, md5) {
 }
 
 // The public pages give no checksum. Photos imported before keep the checksum
-// they had; new ones are downloaded first, so duplicates can still be found.
+// they had while the start of the file in Drive matches the copy on disk; new
+// and changed ones are downloaded first, so duplicates can still be found.
 // With --refresh every photo is downloaded, so changed ones get a new checksum.
 const staged = new Map();
 if (LINK_MODE && !DRY_RUN) {
   await mkdir(PHOTOS_DIR, { recursive: true });
   const fresh = [];
+  const known = [];
   for (const img of images) {
     const prev = prevById.get(img.id);
-    if (!REFRESH && prev && (await onDiskAs(prev.file, prev.md5))) img.md5Checksum = prev.md5;
+    if (!REFRESH && prev && (await onDiskAs(prev.file, prev.md5))) known.push([img, prev]);
     else fresh.push(img);
   }
-  if (fresh.length) console.log(`drive-import: downloading ${fresh.length} ${REFRESH ? 'photos to compare' : 'new photos'}`);
+  let changed = 0;
+  let unchecked = 0;
+  const checks = [...known];
+  await Promise.all(
+    Array.from({ length: 4 }, async () => {
+      for (let item = checks.shift(); item; item = checks.shift()) {
+        const [img, prev] = item;
+        const remote = await headPublic(img.id);
+        if (remote === null) unchecked++;
+        if (remote !== null && remote !== (await headLocal(path.join(PHOTOS_DIR, prev.file)))) {
+          changed++;
+          fresh.push(img);
+        } else img.md5Checksum = prev.md5;
+      }
+    }),
+  );
+  if (known.length) console.log(`drive-import: checked ${known.length - unchecked} photos for changes, ${changed} changed`);
+  if (unchecked) console.warn(`warning: Drive did not hand out ${unchecked} photos to check; they stay as they are until the next run`);
+  if (fresh.length) console.log(`drive-import: downloading ${fresh.length} ${REFRESH ? 'photos to compare' : 'new or changed photos'}`);
   let done = 0;
   const queue = [...fresh];
   await Promise.all(
