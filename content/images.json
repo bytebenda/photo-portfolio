@@ -423,13 +423,12 @@
    ]
   },
   "dscf6912.jpg": {
-   "sha256": "0a55ecfdf03f4023be3876f6433f924abcb5e1092dcdbba512133d9b7c1a4d35",
-   "hash": "40f1bb6d",
+   "sha256": "58cf8e52abb6b9b1ff80411687148111ca5afcf2ba57dc154114f4201ae53343",
+   "hash": "3ae28b4d",
    "width": 4000,
    "height": 6000,
    "taken": "2024:06:26 09:11:36",
    "keywords": [
-    "featured",
     "nature",
     "travel",
     "landscape"
@@ -440,16 +439,16 @@
    "lens": "FUJIFILM XF23mmF1.4 R",
    "monochrome": false,
    "outputs": [
-    "dscf6912-40f1bb6d-t400.avif",
-    "dscf6912-40f1bb6d-t800.avif",
-    "dscf6912-40f1bb6d-w1-l1600.avif",
-    "dscf6912-40f1bb6d-w1-l3000.avif",
-    "dscf6912-40f1bb6d-t400.webp",
-    "dscf6912-40f1bb6d-t800.webp",
-    "dscf6912-40f1bb6d-w1-l1600.webp",
-    "dscf6912-40f1bb6d-w1-l3000.webp",
-    "dscf6912-40f1bb6d-p640.webp",
-    "dscf6912-40f1bb6d-w1-og1200.jpg"
+    "dscf6912-3ae28b4d-t400.avif",
+    "dscf6912-3ae28b4d-t800.avif",
+    "dscf6912-3ae28b4d-w1-l1600.avif",
+    "dscf6912-3ae28b4d-w1-l3000.avif",
+    "dscf6912-3ae28b4d-t400.webp",
+    "dscf6912-3ae28b4d-t800.webp",
+    "dscf6912-3ae28b4d-w1-l1600.webp",
+    "dscf6912-3ae28b4d-w1-l3000.webp",
+    "dscf6912-3ae28b4d-p640.webp",
+    "dscf6912-3ae28b4d-w1-og1200.jpg"
    ]
   },
   "dscf7048.jpg": {
