@@ -59,11 +59,12 @@ const globeRadius = (w: number, h: number) => Math.min(w * 0.45, (h - 64) * 0.4)
 const PICK = 6; // pixels around a click that still count as a hit
 const PICK_SIZE = PICK * 2 + 1;
 
-// Timeline, as shares of p. Unrolling runs over [0, UNROLL], so the full sheet
-// is on screen for a moment before anything leaves it. Copies leave from 0.38
-// (spread 0.14, taking 0.3); primaries start from 0.4 (spread 0.2, centre of
-// the screen first) and take 0.3, so the last one lands at 0.90, before the
-// crossfade to the grid.
+// Timeline, as shares of p. Unrolling runs over [0, UNROLL]. The flights start
+// while the sheet is still flattening, so the two eased motions overlap and
+// there is no moment where everything stands still (scrolling back up made
+// that pause feel like a stutter). Copies leave from 0.22 (spread 0.14);
+// primaries start from 0.22 (spread 0.24, centre of the screen first). Both
+// take 0.44, so the last one lands at 0.90, before the crossfade to the grid.
 const UNROLL = 0.4;
 
 const vertexShader = /* glsl */ `
@@ -186,8 +187,8 @@ const vertexShader = /* glsl */ `
 
     // Each tile has its own window on the timeline.
     float primary = aTarget.w;
-    float start = mix(0.38 + aOrder * 0.14, 0.4 + aOrder * 0.2, primary);
-    float q = clamp((uP - start) / 0.3, 0.0, 1.0);
+    float start = 0.22 + aOrder * mix(0.14, 0.24, primary);
+    float q = clamp((uP - start) / 0.44, 0.0, 1.0);
     float qe = smoother(q);
     float arc = sin(q * PI);
 

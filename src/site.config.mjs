@@ -1,7 +1,7 @@
 // Site-wide settings.
 export default {
   // Shown in the browser tab and the top left corner.
-  name: "Dieter's portfolio",
+  name: 'DIETER.VISUALS',
   // The photographer, shown in the footer and the page descriptions.
   author: 'Dieter Van Stijvendael',
   description: 'Photography by Dieter Van Stijvendael',

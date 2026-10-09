@@ -1,4 +1,4 @@
-# Dieter's portfolio
+# DIETER.VISUALS
 
 A static photography portfolio: a square grid on black, one Filter button for location, category, year and style, and a fullscreen photo view. Built with Astro and sharp in GitHub Actions, hosted on Vercel.
 

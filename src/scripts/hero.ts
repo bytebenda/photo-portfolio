@@ -345,7 +345,7 @@ function start() {
     if (d > 0.15) globe.setTargets(tiles.map(rectOf));
 
     // Glow: a little on the globe, most in mid-flight, none by the hand-off.
-    const flight = clamp((d - 0.35) / 0.55);
+    const flight = clamp((d - 0.22) / 0.68);
     // It tapers to nothing by 0.86 instead of being cut off, and when the device
     // is too slow for it, it fades out over half a second rather than vanishing.
     glowLevel += ((glow ? 1 : 0) - glowLevel) * Math.min(1, dt * 4);
@@ -527,8 +527,12 @@ function start() {
   });
 
   // Escape in the gallery goes back up to the ball.
+  // From deep in the gallery it first jumps to where the globe hands over, so the
+  // smooth part only runs the hand-off backwards and no rows of photos fly by.
   document.addEventListener('gallery:escape', () => {
-    if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' });
+    if (window.scrollY <= 0) return;
+    if (!still() && window.scrollY > heroH + window.innerHeight) window.scrollTo(0, heroH);
+    window.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' });
   });
 
   // A drag or swipe on the ball turns it in any direction (the disc over it has
