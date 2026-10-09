@@ -720,6 +720,7 @@ html:not(.js) .glass-btn {
   transform: translateX(-50%);
   color: var(--fg-2);
   font-size: 11px;
+  white-space: nowrap;
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
