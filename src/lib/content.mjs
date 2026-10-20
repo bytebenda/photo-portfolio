@@ -40,6 +40,18 @@ export class ContentError extends Error {
   }
 }
 
+/**
+ * The default URL name of a photo: a checksum of its file name, so the file name
+ * does not show in the address or the HTML, and the address stays the same when
+ * the photo is replaced in Drive under the same name.
+ */
+export function photoId(file) {
+  return createHash('sha256').update(`photo:${file}`).digest('hex').slice(0, 10);
+}
+
+/** Title of a photo without a title of its own. */
+export const UNTITLED = 'Untitled';
+
 export function slugify(s) {
   return String(s)
     .normalize('NFKD')
@@ -386,9 +398,13 @@ function sizesFor(longEdge, wanted) {
 // changes, so those files get new names and are made again.
 const WATERMARK = 'w1';
 
-/** The image files a photo needs, with their public URLs. */
+/**
+ * The image files a photo needs, with their public URLs. They are named after a
+ * checksum of the original, never after its file name, so the HTML does not show
+ * what the photo is called in Drive. A changed original gets new names.
+ */
 export function imageSet(p) {
-  const base = `${p.slug}-${p.hash}`;
+  const base = p.source.sha256.slice(0, 16);
   const marked = `${base}-${WATERMARK}`;
   const longEdge = Math.max(p.width, p.height);
   const short = Math.min(p.width, p.height);
@@ -540,7 +556,7 @@ export async function loadContent({ fresh = false } = {}) {
       errors.push(`${where}: unknown style "${style}"${hint ? `, did you mean "${hint}"?` : ''}`);
     }
 
-    const slug = slugify(e.slug ?? e.file);
+    const slug = e.slug === undefined ? photoId(e.file) : slugify(e.slug);
     if (!slug) errors.push(`${where}: slug is empty`);
     if (slugs.has(slug)) errors.push(`${where}: slug "${slug}" is already used by ${slugs.get(slug)}`);
     slugs.set(slug, e.file);
@@ -554,12 +570,12 @@ export async function loadContent({ fresh = false } = {}) {
     if (e.year !== undefined && !Number.isInteger(e.year)) errors.push(`${where}: year must be a whole number`);
     if (e.featured !== undefined && typeof e.featured !== 'boolean') errors.push(`${where}: featured must be true or false`);
     const title = e.title ?? meta?.title ?? derived.title;
-    if (!title) warnings.push(`${where}: no title, the file name is used as alt text`);
+    if (!title) warnings.push(`${where}: no title, shown as "${UNTITLED}"`);
 
     draft.push({
       file: e.file,
       slug,
-      title: title ?? slugify(e.file).replace(/-/g, ' '),
+      title: title ?? UNTITLED,
       categories: cats,
       style,
       year: e.year ?? meta?.year ?? derived.year,
@@ -581,14 +597,14 @@ export async function loadContent({ fresh = false } = {}) {
   for (const f of rest) {
     const derived = deriveFor(f);
     const meta = metaByFile.get(f);
-    let slug = slugify(f);
+    let slug = photoId(f);
     while (slugs.has(slug)) slug += '-1';
     slugs.set(slug, f);
     if (!derived.categories.length) warnings.push(`${f}: no ${whereFrom(f)} matches a category, shown under Uncategorized`);
     draft.push({
       file: f,
       slug,
-      title: meta?.title ?? derived.title ?? slugify(f).replace(/-/g, ' '),
+      title: meta?.title ?? derived.title ?? UNTITLED,
       categories: derived.categories.length ? derived.categories : [UNCATEGORIZED.id],
       style: derived.style,
       year: meta?.year ?? derived.year,

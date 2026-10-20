@@ -1,8 +1,9 @@
 // Makes every image the site needs from the originals in content/photos/:
 // square thumbnails (400, 800), large versions (1600, 3000 on the long edge)
 // in AVIF and WebP, a small preview WebP and a JPEG for link previews.
-// Files are named after the slug and a hash of the original, so unchanged
-// photos are skipped and old versions are removed. The large versions and the
+// Files are named after a checksum of the original, not its file name, so the
+// name of the photo in Drive never shows on the site; unchanged photos are
+// skipped and old versions are removed. The large versions and the
 // link preview carry a small watermark in the bottom-right corner; thumbnails
 // and the small preview do not. Neither the originals nor the
 // images are in Git: the workflow keeps both in the GitHub Actions cache, so a run

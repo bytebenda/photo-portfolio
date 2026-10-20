@@ -1,7 +1,7 @@
 # One entry per photo. The order here is the order of the grid.
 #
 #   file:       name of the file in content/photos/ (required)
-#   slug:       URL name, /photo/<slug> (optional, defaults to the file name)
+#   slug:       URL name, /photo/<slug> (optional, defaults to a code made from the file name)
 #   title:      page title and alt text (required)
 #   categories: one or more ids from categories.yaml (required)
 #   style:      one id from styles.yaml (required)
