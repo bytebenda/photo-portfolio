@@ -46,8 +46,8 @@ jobs:
       VERCEL_PROJECT_ID: prj_WUHS7Ok8CC2em2GmCAEsNhM4qHDN
       TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -56,7 +56,7 @@ jobs:
       # The newest cache of originals and images, from this branch or main.
       - name: Restore photos
         id: photos
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             content/photos
@@ -82,7 +82,7 @@ jobs:
 
       - name: Save photos
         if: steps.changes.outputs.skip != 'true' && steps.photos.outputs.cache-matched-key != format('photos-{0}', hashFiles('content/drive.yaml', 'content/images.json'))
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             content/photos
